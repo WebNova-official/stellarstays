@@ -28,14 +28,14 @@
         .slider-counter { position:absolute; bottom:52px; right:14px; background:rgba(15,31,61,0.72); color:#fff; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; letter-spacing:.4px; pointer-events:none; }
 
         /* Tab nav */
-        nav.sticky { height: 60px; }
-        .tab-nav { position: sticky; top: 60px; z-index: 40; background: white; border-bottom: 1px solid #e5e7eb; }
+        nav.sticky { height: 70px; }
+        .tab-nav { position: sticky; top: 70px; z-index: 40; background: white; border-bottom: 1px solid #e5e7eb; }
         .tab-btn { padding: 14px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; cursor: pointer; background: none; border-top: none; border-left: none; border-right: none; }
         .tab-btn.active { color: #0f1f3d; border-bottom-color: #f59e0b; }
         .tab-btn:hover:not(.active) { color: #374151; }
 
         /* Sticky sidebar */
-        .sticky-sidebar { position: sticky; top: 118px; }
+        .sticky-sidebar { position: sticky; top: 128px; }
 
         /* Input focus */
         .form-input:focus { outline: none; border-color: var(--brand-amber); box-shadow: 0 0 0 3px rgba(245,158,11,0.15); }
@@ -69,21 +69,23 @@
 <body class="flex flex-col min-h-screen">
 
 <!-- NAV -->
-<nav class="bg-white border-b border-gray-100 px-4 md:px-8 py-3 flex justify-between items-center sticky top-0 z-50 shadow-sm">
-    <a href="index.html" class="flex items-center gap-2">
+<nav class="bg-white border-b border-gray-100 px-4 md:px-8 flex justify-between items-center sticky top-0 z-50 shadow-sm" style="height:70px; overflow:visible;">
+    <!-- Logo — overflows below navbar like index.html -->
+    <div class="absolute z-20 left-4 md:left-8 top-[32px] md:top-[16px] cursor-pointer" onclick="window.location.href='index.html'">
         <img src="logo.jpeg" alt="Stellar Stays" class="w-[46px] h-[46px] md:w-[80px] md:h-[80px]" style="border-radius:50%; object-fit:contain; background:#0f1f3d; box-shadow:0 4px 20px rgba(15,31,61,0.30), 0 0 0 4px #fff;" />
-    </a>
-    <div class="hidden md:flex items-center gap-2 text-sm font-medium text-gray-600 min-w-0 flex-1 mx-6">
+    </div>
+    <!-- Villa title + dates (offset to clear logo) -->
+    <div class="hidden md:flex items-center gap-2 text-sm font-medium text-gray-600 min-w-0 flex-1 pl-[110px]">
         <span id="navVillaTitle" class="text-[#0f1f3d] font-bold truncate"></span>
         <span class="text-gray-300 shrink-0">|</span>
         <span id="navDates" class="text-gray-400 text-xs shrink-0"></span>
         <span id="navGuests" class="text-gray-400 text-xs shrink-0"></span>
     </div>
-    <div class="flex items-center gap-3 shrink-0">
+    <div class="flex items-center gap-3 shrink-0 ml-auto">
         <span class="verified-badge text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-full hidden sm:flex items-center gap-1.5">
             <i class="fa-solid fa-shield-halved text-emerald-600"></i> Verified Luxury Partner
         </span>
-        <a href="https://wa.me/919876543210" target="_blank" class="bg-emerald-500 text-white w-9 h-9 rounded-full flex items-center justify-center text-base hover:bg-emerald-600 transition shadow-sm">
+        <a href="https://wa.me/918655444465" target="_blank" class="bg-emerald-500 text-white w-9 h-9 rounded-full flex items-center justify-center text-base hover:bg-emerald-600 transition shadow-sm">
             <i class="fa-brands fa-whatsapp"></i>
         </a>
     </div>
