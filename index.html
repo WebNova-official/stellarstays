@@ -674,6 +674,17 @@
         const grid  = document.getElementById('propertyGrid');
         const count = document.getElementById('propertyCount');
         grid.innerHTML = '';
+
+        // ── Lazy load observer — hoisted so it's accessible after forEach ──
+        const lazyObs = 'IntersectionObserver' in window ? new IntersectionObserver(function(entries) {
+            entries.forEach(function(e) {
+                if (e.isIntersecting) {
+                    var img = e.target;
+                    if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
+                    lazyObs.unobserve(img);
+                }
+            });
+        }, { rootMargin: '200px' }) : null;
         count.innerText = `${properties.length} ${properties.length === 1 ? 'space' : 'spaces'} available`;
 
         if (properties.length === 0) {
@@ -788,16 +799,7 @@
                 return url.replace('/upload/', '/upload/w_' + w + ',h_' + h + ',c_fill,q_auto,f_auto/');
             }
 
-            // ── Lazy load observer ──
-            const lazyObs = 'IntersectionObserver' in window ? new IntersectionObserver(function(entries) {
-                entries.forEach(function(e) {
-                    if (e.isIntersecting) {
-                        var img = e.target;
-                        if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
-                        lazyObs.unobserve(img);
-                    }
-                });
-            }, { rootMargin: '200px' }) : null;
+            // ── Lazy load observer (hoisted — see top of renderProperties) ──
 
             // Image gallery — supports item.images[] (multi-photo auto-slide);
             // falls back to single item.image when backend only sends one photo.
