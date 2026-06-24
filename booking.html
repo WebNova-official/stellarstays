@@ -21,7 +21,23 @@
         .photo-mosaic-left { grid-row: 1 / 3; }
         .photo-slot { overflow: hidden; background: #e5e7eb; }
         .photo-slot img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s ease; }
-        .photo-slot:hover img { transform: scale(1.03); }
+        .photo-slot:hover img { transform: scale(1.05); }
+
+        /* Lightbox / Gallery slider */
+        #galleryLightbox { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.93); align-items:center; justify-content:center; flex-direction:column; }
+        #galleryLightbox.open { display:flex; }
+        #galleryLightboxImg { max-height:80vh; max-width:90vw; object-fit:contain; border-radius:8px; transition: opacity 0.25s ease; user-select:none; }
+        #galleryLightboxImg.fade { opacity:0; }
+        .gallery-arrow { position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.12); border:none; color:#fff; font-size:24px; width:52px; height:52px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s; z-index:10; }
+        .gallery-arrow:hover { background:rgba(255,255,255,0.28); }
+        #galleryPrev { left:16px; }
+        #galleryNext { right:16px; }
+        #galleryCounter { color:rgba(255,255,255,0.7); font-size:13px; font-weight:600; margin-top:12px; letter-spacing:.5px; }
+        #galleryClose { position:absolute; top:16px; right:20px; background:none; border:none; color:#fff; font-size:28px; cursor:pointer; opacity:0.7; transition:opacity 0.2s; line-height:1; }
+        #galleryClose:hover { opacity:1; }
+        #galleryThumbs { display:flex; gap:6px; margin-top:14px; overflow-x:auto; max-width:90vw; padding-bottom:4px; }
+        #galleryThumbs img { width:58px; height:44px; object-fit:cover; border-radius:6px; cursor:pointer; opacity:0.5; border:2px solid transparent; transition:opacity 0.2s,border-color 0.2s; flex-shrink:0; }
+        #galleryThumbs img.active { opacity:1; border-color:#f59e0b; }
 
         /* Tab nav */
         nav.sticky { height: 60px; }
@@ -91,16 +107,16 @@
     <div class="max-w-7xl mx-auto px-4 md:px-6 pt-5">
         <div class="rounded-2xl overflow-hidden" style="height:clamp(260px,42vw,500px);">
             <div class="photo-mosaic h-full">
-                <div class="photo-slot photo-mosaic-left relative cursor-pointer" onclick="openGallery()">
+                <div class="photo-slot photo-mosaic-left relative cursor-pointer" onclick="openGallery(0)">
                     <img src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1200&q=80" alt="Villa" id="mainPhotoImg" />
-                    <button onclick="event.stopPropagation();openGallery()" class="absolute bottom-4 right-4 bg-white text-[#0f1f3d] text-xs font-bold px-4 py-2 rounded-xl shadow flex items-center gap-2 hover:bg-gray-50 transition">
+                    <button onclick="event.stopPropagation();openGallery(0)" class="absolute bottom-4 right-4 bg-white text-[#0f1f3d] text-xs font-bold px-4 py-2 rounded-xl shadow flex items-center gap-2 hover:bg-gray-50 transition">
                         <i class="fa-solid fa-images text-amber-500"></i> View All Photos
                     </button>
                 </div>
-                <div class="photo-slot cursor-pointer" onclick="openGallery()">
+                <div class="photo-slot cursor-pointer" onclick="openGallery(1)">
                     <img src="https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80" alt="Villa 2" id="photo2Img" />
                 </div>
-                <div class="photo-slot cursor-pointer relative" onclick="openGallery()">
+                <div class="photo-slot cursor-pointer relative" onclick="openGallery(2)">
                     <img src="https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&q=80" alt="Villa 3" id="photo3Img" />
                     <div id="morePhotosOverlay" class="hidden absolute inset-0 bg-black/50 items-center justify-center text-white font-bold text-xl">
                         <span id="morePhotosCount">+8 More</span>
@@ -449,6 +465,48 @@
                             <input type="tel" id="guestPhone" placeholder="98765 43210" class="form-input flex-1 border border-gray-200 rounded-r-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
                         </div>
                     </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">City</label>
+                            <input type="text" id="guestCity" placeholder="e.g. Mumbai" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">State</label>
+                            <input type="text" id="guestState" placeholder="e.g. Maharashtra" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Purpose of Visit</label>
+                        <select id="guestPurpose" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                            <option value="">— Select —</option>
+                            <option>Family Vacation</option>
+                            <option>Birthday / Anniversary</option>
+                            <option>Corporate Retreat</option>
+                            <option>Bachelorette / Stag Party</option>
+                            <option>Honeymoon</option>
+                            <option>Friends Getaway</option>
+                            <option>Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Special Requests <span class="normal-case text-gray-300 font-normal">(optional)</span></label>
+                        <textarea id="guestSpecialRequests" rows="2" placeholder="Dietary needs, early check-in, room decoration…" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50 resize-none"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ID Proof Type *</label>
+                        <select id="guestIdType" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                            <option value="">— Select ID —</option>
+                            <option>Aadhaar Card</option>
+                            <option>PAN Card</option>
+                            <option>Passport</option>
+                            <option>Driving Licence</option>
+                            <option>Voter ID</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ID Number *</label>
+                        <input type="text" id="guestIdNumber" placeholder="Enter ID number" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                    </div>
                 </div>
 
                 <hr class="border-gray-100">
@@ -648,6 +706,16 @@
     <button onclick="scrollToSection('availability')" class="bg-amber-500 text-white font-bold px-6 py-3 rounded-xl text-sm shadow">Book Now</button>
 </div>
 
+<!-- GALLERY LIGHTBOX -->
+<div id="galleryLightbox" role="dialog" aria-modal="true" aria-label="Photo gallery">
+    <button id="galleryClose" onclick="closeGallery()" title="Close">&#10005;</button>
+    <button class="gallery-arrow" id="galleryPrev" onclick="galleryStep(-1)" title="Previous">&#8249;</button>
+    <img id="galleryLightboxImg" src="" alt="Gallery photo" draggable="false" />
+    <button class="gallery-arrow" id="galleryNext" onclick="galleryStep(1)" title="Next">&#8250;</button>
+    <div id="galleryCounter">1 / 1</div>
+    <div id="galleryThumbs"></div>
+</div>
+
 <!-- FOOTER -->
 <footer class="bg-[#0f1f3d] text-gray-400 mt-16 pt-12 pb-8 px-4 md:px-8 relative">
     <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 pb-10 border-b border-white/10">
@@ -737,12 +805,68 @@ document.addEventListener('DOMContentLoaded', function() {
     sections.forEach(s => observer.observe(s));
 });
 
-// Gallery
-function openGallery() {
-    if (window._galleryImages && window._galleryImages.length) {
-        window._galleryImages.forEach(function(src) { window.open(src, '_blank'); });
-    }
+// Gallery lightbox
+var _galleryIdx = 0;
+function openGallery(startIdx) {
+    var imgs = window._galleryImages || [];
+    if (!imgs.length) return;
+    _galleryIdx = (startIdx !== undefined) ? startIdx : 0;
+    _renderGallery(imgs);
+    var lb = document.getElementById('galleryLightbox');
+    lb.classList.add('open');
+    document.body.style.overflow = 'hidden';
 }
+function closeGallery() {
+    document.getElementById('galleryLightbox').classList.remove('open');
+    document.body.style.overflow = '';
+}
+function _renderGallery(imgs) {
+    var img   = document.getElementById('galleryLightboxImg');
+    var ctr   = document.getElementById('galleryCounter');
+    var thumbs = document.getElementById('galleryThumbs');
+    var n = imgs.length;
+    img.src = imgs[_galleryIdx];
+    ctr.textContent = (_galleryIdx + 1) + ' / ' + n;
+    // Thumbs
+    if (!thumbs._built) {
+        thumbs.innerHTML = imgs.map(function(s, i) {
+            return '<img src="' + s + '" data-idx="' + i + '" onclick="galleryGoTo(' + i + ')" alt="thumb ' + (i+1) + '" />';
+        }).join('');
+        thumbs._built = true;
+    }
+    thumbs.querySelectorAll('img').forEach(function(el) {
+        el.classList.toggle('active', parseInt(el.dataset.idx) === _galleryIdx);
+    });
+}
+function galleryStep(delta) {
+    var imgs = window._galleryImages || [];
+    if (!imgs.length) return;
+    var img = document.getElementById('galleryLightboxImg');
+    img.classList.add('fade');
+    setTimeout(function() {
+        _galleryIdx = (_galleryIdx + delta + imgs.length) % imgs.length;
+        _renderGallery(imgs);
+        img.classList.remove('fade');
+    }, 220);
+}
+function galleryGoTo(idx) {
+    var imgs = window._galleryImages || [];
+    var img = document.getElementById('galleryLightboxImg');
+    img.classList.add('fade');
+    setTimeout(function() {
+        _galleryIdx = idx;
+        _renderGallery(imgs);
+        img.classList.remove('fade');
+    }, 220);
+}
+// Keyboard nav for gallery
+document.addEventListener('keydown', function(e) {
+    var lb = document.getElementById('galleryLightbox');
+    if (!lb.classList.contains('open')) return;
+    if (e.key === 'ArrowRight') galleryStep(1);
+    else if (e.key === 'ArrowLeft') galleryStep(-1);
+    else if (e.key === 'Escape') closeGallery();
+});
 
 // Guest state
 const guests = { adults: 2, children: 0, infants: 0 };
@@ -938,9 +1062,15 @@ function closeBookingModal() {
 }
 
 async function executePaymentGateway() {
-    var name  = document.getElementById('guestName')?.value.trim();
-    var email = document.getElementById('guestEmail')?.value.trim();
-    var phone = document.getElementById('guestPhone')?.value.trim();
+    var name    = document.getElementById('guestName')?.value.trim();
+    var email   = document.getElementById('guestEmail')?.value.trim();
+    var phone   = document.getElementById('guestPhone')?.value.trim();
+    var city    = document.getElementById('guestCity')?.value.trim() || '';
+    var state   = document.getElementById('guestState')?.value.trim() || '';
+    var purpose = document.getElementById('guestPurpose')?.value || '';
+    var requests= document.getElementById('guestSpecialRequests')?.value.trim() || '';
+    var idType  = document.getElementById('guestIdType')?.value || '';
+    var idNum   = document.getElementById('guestIdNumber')?.value.trim() || '';
     if (!name || !email || !phone) { alert('Please fill in your name, email, and WhatsApp number before confirming.'); return; }
     if (!checkIn || !checkOut)     { alert('Please select your check-in and check-out dates.'); return; }
     if (!villaData)                { alert('Property data is still loading. Please wait a moment and try again.'); return; }
@@ -959,6 +1089,8 @@ async function executePaymentGateway() {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ property: villaData._id, propertyName: villaData.name,
                 guestName: name, guestEmail: email, guestPhone: phone,
+                guestCity: city, guestState: state, purposeOfVisit: purpose,
+                specialRequests: requests, idType: idType, idNumber: idNum,
                 checkIn, checkOut, nights, adults: guests.adults, children: guests.children, infants: guests.infants,
                 pricePerNight: pPN, baseAmount, addonChef: chefOn, addonBonfire: bonfireOn,
                 addonAmount, taxAmount, totalAmount, status: 'pending' })
