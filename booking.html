@@ -93,18 +93,34 @@
 
 <main class="flex-grow w-full">
 
-    <!-- Photo Slider -->
+    <!-- Photo Slider + Video Toggle -->
     <div class="max-w-7xl mx-auto px-4 md:px-6 pt-5">
+
+        <!-- Toggle Pills -->
+        <div class="flex items-center gap-2 mb-3">
+            <button id="tabPhotosBtn" onclick="showMediaTab('photos')" class="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border transition bg-[#0f1f3d] text-white border-[#0f1f3d]">
+                <i class="fa-solid fa-images"></i> Photos
+            </button>
+            <button id="tabVideoBtn" onclick="showMediaTab('video')" class="hidden items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border transition bg-white text-[#0f1f3d] border-gray-300 hover:border-[#0f1f3d]">
+                <i class="fa-solid fa-circle-play text-red-500"></i> Watch Video
+            </button>
+        </div>
+
         <div class="rounded-2xl overflow-hidden" style="height:clamp(260px,42vw,500px);">
-            <div class="slider-wrap">
+
+            <!-- PHOTOS PANEL -->
+            <div id="mediaPhotos" class="slider-wrap h-full">
                 <img id="sliderMainImg" src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1200&q=80" alt="Villa photo" />
                 <button class="slider-arrow" id="sliderPrev" onclick="sliderStep(-1)" title="Previous">&#8249;</button>
                 <button class="slider-arrow" id="sliderNext" onclick="sliderStep(1)" title="Next">&#8250;</button>
                 <div class="slider-counter" id="sliderCounter">1 / 1</div>
-                <button class="absolute bottom-4 right-4 bg-white text-[#0f1f3d] text-xs font-bold px-4 py-2 rounded-xl shadow flex items-center gap-2 hover:bg-gray-50 transition" id="viewAllBtn" onclick="sliderStep(1)">
-                    <i class="fa-solid fa-images text-amber-500"></i> View All Photos
-                </button>
             </div>
+
+            <!-- VIDEO PANEL -->
+            <div id="mediaVideo" class="hidden w-full h-full bg-black">
+                <div id="videoContainer" class="w-full h-full"></div>
+            </div>
+
         </div>
     </div>
 
@@ -736,6 +752,29 @@
 </footer>
 
 <script>
+// Media tab toggle (Photos / Video)
+function showMediaTab(tab) {
+    var photosPanel = document.getElementById('mediaPhotos');
+    var videoPanel  = document.getElementById('mediaVideo');
+    var photosBtn   = document.getElementById('tabPhotosBtn');
+    var videoBtn    = document.getElementById('tabVideoBtn');
+    if (tab === 'video') {
+        photosPanel.classList.add('hidden');
+        videoPanel.classList.remove('hidden');
+        videoBtn.classList.remove('bg-white','text-[#0f1f3d]','border-gray-300');
+        videoBtn.classList.add('bg-[#0f1f3d]','text-white','border-[#0f1f3d]');
+        photosBtn.classList.remove('bg-[#0f1f3d]','text-white','border-[#0f1f3d]');
+        photosBtn.classList.add('bg-white','text-[#0f1f3d]','border-gray-300');
+    } else {
+        videoPanel.classList.add('hidden');
+        photosPanel.classList.remove('hidden');
+        photosBtn.classList.remove('bg-white','text-[#0f1f3d]','border-gray-300');
+        photosBtn.classList.add('bg-[#0f1f3d]','text-white','border-[#0f1f3d]');
+        videoBtn.classList.remove('bg-[#0f1f3d]','text-white','border-[#0f1f3d]');
+        videoBtn.classList.add('bg-white','text-[#0f1f3d]','border-gray-300');
+    }
+}
+
 // Scroll to section (click nav)
 function scrollToSection(tabId) {
     const section = document.getElementById('tab-' + tabId);
@@ -1096,6 +1135,31 @@ async function loadBookingPage() {
         var mapEl = document.getElementById('googleMapsEmbed');
         if (mapEl && villaData.location) {
             mapEl.src = 'https://maps.google.com/maps?q=' + encodeURIComponent(villaData.location + ', India') + '&output=embed';
+        }
+
+        // Video
+        var videoContainer = document.getElementById('videoContainer');
+        if (villaData.video && videoContainer) {
+            var vid = villaData.video.trim();
+            var embedHtml = '';
+            var ytMatch = vid.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/);
+            if (ytMatch) {
+                embedHtml = '<iframe src="https://www.youtube.com/embed/' + ytMatch[1] + '?rel=0&modestbranding=1" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay; encrypted-media" style="display:block;"></iframe>';
+            }
+            var vmMatch = vid.match(/vimeo\.com\/(\d+)/);
+            if (!embedHtml && vmMatch) {
+                embedHtml = '<iframe src="https://player.vimeo.com/video/' + vmMatch[1] + '" width="100%" height="100%" frameborder="0" allowfullscreen style="display:block;"></iframe>';
+            }
+            if (!embedHtml && (vid.match(/\.(mp4|webm|ogg)(\?|$)/i) || vid.startsWith('http'))) {
+                embedHtml = '<video src="' + vid + '" controls playsinline style="width:100%;height:100%;display:block;background:#000;"></video>';
+            }
+            if (embedHtml) {
+                videoContainer.innerHTML = embedHtml;
+                // Show the Watch Video toggle button
+                var tabVideoBtn = document.getElementById('tabVideoBtn');
+                if (tabVideoBtn) tabVideoBtn.classList.remove('hidden');
+                tabVideoBtn.classList.add('flex');
+            }
         }
 
         // Reviews
