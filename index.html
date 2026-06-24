@@ -162,6 +162,38 @@
         /* Navbar scroll */
         #mainNav { transition: background 0.3s, box-shadow 0.3s, border-color 0.3s; }
         #mainNav.scrolled { background: #fff !important; box-shadow: 0 2px 12px rgba(15,31,61,0.08); border-bottom-color: #f3f4f6 !important; }
+
+        /* Compact FAQ grid (2-col on desktop, cuts vertical height) */
+        .faq-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        @media (min-width: 768px) { .faq-grid { grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; } }
+        .faq-item { align-self: start; }
+        .faq-item .faq-q-icon {
+            width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+            background: #fef3c7; color: #d97706; display: flex; align-items: center; justify-content: center;
+            font-size: 12px; transition: background 0.25s, color 0.25s, transform 0.25s;
+        }
+        .faq-item.active .faq-q-icon { background: var(--brand-navy); color: #fbbf24; transform: rotate(-8deg); }
+        .faq-item .faq-icon { transition: transform 0.3s ease; }
+
+        /* House Rules — collapsible category cards */
+        .rule-cat-card { background:#fff; border:1px solid #f3e8c9; border-radius: 16px; overflow: hidden; transition: box-shadow 0.25s ease; }
+        .rule-cat-card:hover { box-shadow: 0 6px 24px rgba(15,31,61,0.08); }
+        .rule-cat-header {
+            width: 100%; display: flex; align-items: center; gap: 12px; padding: 16px 18px;
+            cursor: pointer; background: none; border: none; text-align: left;
+        }
+        .rule-cat-icon {
+            width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; font-size: 15px;
+        }
+        .rule-cat-body { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; padding: 0 18px; }
+        .rule-cat-card.active .rule-cat-body { max-height: 600px; padding: 0 18px 16px; }
+        .rule-cat-card.active .rule-cat-chevron { transform: rotate(180deg); }
+        .rule-cat-chevron { transition: transform 0.3s ease; }
+        .rule-cat-count {
+            font-size: 10px; font-weight: 800; color: #9ca3af; background: #f3f4f6;
+            padding: 2px 8px; border-radius: 999px; margin-left: auto; flex-shrink: 0;
+        }
 </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -417,99 +449,108 @@
     </section>
 
     <!-- ===================== FAQ ===================== -->
-    <section class="bg-white py-20 px-4 md:px-8 scroll-mt-[90px]" id="faq">
-        <div class="max-w-3xl mx-auto">
-            <div class="text-center mb-12">
-                <h2 class="text-3xl font-black text-[--brand-navy]">Frequently Asked Questions</h2>
+    <section class="bg-white py-16 px-4 md:px-8 scroll-mt-[90px]" id="faq">
+        <div class="max-w-5xl mx-auto">
+            <div class="text-center mb-10">
+                <span class="text-amber-500 text-xs font-black uppercase tracking-widest">Got Questions?</span>
+                <h2 class="text-3xl font-black text-[--brand-navy] mt-2">Frequently Asked Questions</h2>
             </div>
-            <div class="space-y-3" id="homepageFaqContainer">
+            <div class="faq-grid" id="homepageFaqContainer">
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>How do I book a stay?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-calendar-check"></i></span>
+                        <span class="flex-1">How do I book a stay?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <p class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed">You can easily book online by selecting your dates, adding the number of guests, and following the steps on our booking page. Once confirmed, you'll receive a booking confirmation via email.</p>
+                        <p class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed">You can easily book online by selecting your dates, adding the number of guests, and following the steps on our booking page. Once confirmed, you'll receive a booking confirmation via email.</p>
                     </div>
                 </div>
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>What are the check-in and check-out times?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-clock"></i></span>
+                        <span class="flex-1">Check-in & check-out times?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <p class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed">Check-in is from 1 PM, and check-out is by 10 AM.</p>
+                        <p class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed">Check-in is from 1 PM, and check-out is by 10 AM.</p>
                     </div>
                 </div>
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>Can I request an early check-in or late check-out?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-hourglass-half"></i></span>
+                        <span class="flex-1">Early check-in / late check-out?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <p class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed">Early check-in and late check-out are not available. Our standard check-out time is 10:00 AM, after which our housekeeping team begins cleaning and preparing the villa for the next arrival. This process usually takes 2–3 hours to ensure the property is clean, checked, and ready to provide the best experience for every guest. Since our standard check-in time is 1:00 PM, we are unable to accommodate early arrivals or extended departures. We appreciate your understanding and cooperation.</p>
+                        <p class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed">Not available. Our standard check-out (10 AM) gives housekeeping 2–3 hours to prepare the villa for the next guest, so we can't accommodate early arrivals or extended departures. Thanks for understanding.</p>
                     </div>
                 </div>
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>Is there a contact if I need help?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-headset"></i></span>
+                        <span class="flex-1">Is there a contact if I need help?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <p class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed">Yes, you can reach our support team on 8655444465.</p>
+                        <p class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed">Yes, you can reach our support team on 8655444465.</p>
                     </div>
                 </div>
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>What is included in the rental price?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-tags"></i></span>
+                        <span class="flex-1">What's included in the rental price?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <p class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed">The rental price includes the fully furnished villa, all basic amenities, Wi-Fi, private pool, and utilities.</p>
+                        <p class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed">The rental price includes the fully furnished villa, all basic amenities, Wi-Fi, private pool, and utilities.</p>
                     </div>
                 </div>
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>How do I know my booking is confirmed?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-circle-check"></i></span>
+                        <span class="flex-1">How do I know my booking is confirmed?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <p class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed">Once you complete your booking, you will receive a confirmation email with all the details.</p>
+                        <p class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed">Once you complete your booking, you will receive a confirmation email with all the details.</p>
                     </div>
                 </div>
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>I have already made my booking and payment online. Do I need to make any additional payment at check-in?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-wallet"></i></span>
+                        <span class="flex-1">Any additional payment needed at check-in?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <div class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed space-y-2">
-                            <p>Yes, apart from your online booking payment, a refundable security deposit needs to be paid to the caretaker at the time of check-in. This deposit is collected as a precaution against any damages to the property during your stay.</p>
-                            <p>The security deposit amount differs based on the villa type:</p>
+                        <div class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed space-y-2">
+                            <p>Yes — a refundable security deposit is paid to the caretaker at check-in, as a precaution against property damage.</p>
                             <ul class="list-disc pl-5 space-y-1">
                                 <li>2BHK – ₹2,000</li>
                                 <li>3BHK & 4BHK – ₹3,000</li>
                             </ul>
-                            <p>The security deposit is fully refundable after check-out, provided there is no damage to the property and all house rules are followed.</p>
+                            <p>Fully refundable after check-out if there's no damage and house rules are followed.</p>
                         </div>
                     </div>
                 </div>
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>What is a security deposit?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-shield-halved"></i></span>
+                        <span class="flex-1">What is a security deposit?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <p class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed">A security deposit is a refundable amount collected at check-in as a precaution against any damages to the property during your stay. The amount is returned after check-out, provided there is no damage and all house rules are followed.</p>
+                        <p class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed">A refundable amount collected at check-in as a precaution against damages. Returned after check-out if there's no damage and all house rules are followed.</p>
                     </div>
                 </div>
                 <div class="faq-item bg-[--brand-cream] border border-amber-100 rounded-2xl overflow-hidden" onclick="toggleHomepageFaq(this)">
-                    <button class="w-full p-5 text-left flex justify-between items-center gap-4 text-sm font-bold text-[--brand-navy] focus:outline-none">
-                        <span>What if more guests arrive than the number mentioned during booking?</span>
-                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
+                    <button class="w-full p-4 text-left flex items-center gap-3 text-sm font-bold text-[--brand-navy] focus:outline-none">
+                        <span class="faq-q-icon"><i class="fa-solid fa-users"></i></span>
+                        <span class="flex-1">Extra guests beyond booking count?</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon"></i>
                     </button>
                     <div class="faq-answer">
-                        <p class="px-5 pb-5 pt-1 text-sm text-gray-600 leading-relaxed">Our booking includes a base occupancy of up to 8 guests. If additional guests arrive at the property during check-in beyond the number mentioned in the booking, an additional charge of ₹1,000 per extra guest will be applicable. To ensure a smooth check-in experience, we request guests to mention the correct number of guests while making the booking.</p>
+                        <p class="px-4 pb-4 pl-[52px] text-sm text-gray-600 leading-relaxed">Base occupancy is up to 8 guests. Extra guests at check-in beyond the booked count are charged ₹1,000/guest. Please mention the correct headcount while booking.</p>
                     </div>
                 </div>
             </div>
@@ -517,35 +558,100 @@
     </section>
 
     <!-- ===================== HOUSE RULES / POLICIES ===================== -->
-    <section class="bg-[--brand-cream] py-20 px-4 md:px-8 scroll-mt-[90px]" id="policies">
+    <section class="bg-[--brand-cream] py-16 px-4 md:px-8 scroll-mt-[90px]" id="policies">
         <div class="max-w-4xl mx-auto">
             <div class="text-center mb-10">
-                <h2 class="text-3xl font-black text-[--brand-navy]">House Rules</h2>
-                <p class="text-gray-500 text-sm mt-2 max-w-2xl mx-auto">A few things to know before you check in, so the stay is smooth for you and the guests after you.</p>
+                <span class="text-amber-500 text-xs font-black uppercase tracking-widest">Please Read</span>
+                <h2 class="text-3xl font-black text-[--brand-navy] mt-2">House Rules</h2>
+                <p class="text-gray-500 text-sm mt-2 max-w-2xl mx-auto">Tap a category to expand. A few things to know before you check in, so the stay is smooth for you and the guests after you.</p>
             </div>
-            <div class="bg-white rounded-2xl border border-amber-100 p-6 md:p-10">
-                <ul class="grid sm:grid-cols-2 gap-x-10 gap-y-4 text-sm text-gray-700 leading-relaxed list-disc pl-5">
-                    <li>No cancellation or refund policy is available.</li>
-                    <li>Additional guests will be charged ₹1,000 per person per night.</li>
-                    <li>Check-in: 1:00 PM. Check-out: 10:00 AM.</li>
-                    <li>Early check-in and late check-out are not permitted.</li>
-                    <li>A refundable security deposit of ₹3,000 is required at check-in. The deposit may be forfeited if house rules are violated or if any damage/breakage occurs on the property.</li>
-                    <li>Caretakers are available on call between 10:00 AM and 5:00 PM. Guests are requested to address their queries during these hours.</li>
-                    <li>Kitchen usage: ₹500 per day/night. We do not provide a gas connection or stove; an induction cooktop with basic induction-compatible cookware is available under this charge.</li>
-                    <li>Barbecue setup: ₹500 per use. We provide a barbecue grill, skewers, and 2 kg of charcoal.</li>
-                    <li>Valid government-issued photo ID is required for all guests at check-in.</li>
-                    <li>Towels are provided every 2 days per guest for multi-night bookings.</li>
-                    <li>Bedsheets are changed every 3 days for multi-night bookings.</li>
-                    <li>Cleaning is scheduled between 11:00 AM and 1:00 PM for multi-night bookings. Requests for cleaning outside the scheduled housekeeping hours cannot be accommodated.</li>
-                    <li>Pool access is available from 8:00 AM to 10:00 PM. Pool usage is strictly prohibited after 10:00 PM.</li>
-                    <li>Outdoor music is permitted until 10:00 PM. After 10:00 PM, music may be played indoors at a moderate volume.</li>
-                    <li>Decorations are permitted only under the supervision and approval of the caretaker. Decorations on interior walls, furniture, or other surfaces are not allowed. Unauthorized decorations may result in additional charges.</li>
-                    <li>Power outages from MSEB are beyond our control. Inverter backup is available for approximately 2–3 hours. No refund or compensation will be provided for electricity outages.</li>
-                    <li>Respectful behavior toward staff and management is mandatory. Rude, abusive, or inappropriate behavior may result in immediate eviction from the villa without refund.</li>
-                    <li>Pets are welcome. Please do not allow pets on beds, sofas, or in the swimming pool. Pet owners are responsible for cleaning up after their pets. A maximum of 2 pets are allowed free of charge; any additional pets will be charged ₹1,000 per pet per stay.</li>
-                    <li>Any damage to the property, furniture, fixtures, amenities, or decor will result in additional charges.</li>
-                    <li>Smoking is permitted in outdoor areas only. Smoking inside the villa is strictly prohibited.</li>
-                </ul>
+            <div class="space-y-3" id="houseRulesContainer">
+
+                <div class="rule-cat-card" onclick="toggleRuleCategory(this)">
+                    <button class="rule-cat-header">
+                        <span class="rule-cat-icon" style="background:#fee2e2; color:#dc2626;"><i class="fa-solid fa-clock"></i></span>
+                        <span class="font-bold text-sm text-[--brand-navy]">Timing & Stay</span>
+                        <span class="rule-cat-count">5</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 rule-cat-chevron"></i>
+                    </button>
+                    <div class="rule-cat-body">
+                        <ul class="list-disc pl-5 space-y-1.5 text-sm text-gray-700 leading-relaxed">
+                            <li>Check-in: 1:00 PM. Check-out: 10:00 AM.</li>
+                            <li>Early check-in and late check-out are not permitted.</li>
+                            <li>Caretakers are available on call between 10:00 AM and 5:00 PM. Please address queries during these hours.</li>
+                            <li>Cleaning is scheduled between 11:00 AM and 1:00 PM for multi-night bookings; requests outside this window can't be accommodated.</li>
+                            <li>No cancellation or refund policy is available.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="rule-cat-card" onclick="toggleRuleCategory(this)">
+                    <button class="rule-cat-header">
+                        <span class="rule-cat-icon" style="background:#fef3c7; color:#d97706;"><i class="fa-solid fa-wallet"></i></span>
+                        <span class="font-bold text-sm text-[--brand-navy]">Deposits & Charges</span>
+                        <span class="rule-cat-count">5</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 rule-cat-chevron"></i>
+                    </button>
+                    <div class="rule-cat-body">
+                        <ul class="list-disc pl-5 space-y-1.5 text-sm text-gray-700 leading-relaxed">
+                            <li>Additional guests will be charged ₹1,000 per person per night.</li>
+                            <li>A refundable security deposit of ₹3,000 is required at check-in — may be forfeited for rule violations or property damage.</li>
+                            <li>Kitchen usage: ₹500 per day/night (induction cooktop + basic cookware; no gas/stove provided).</li>
+                            <li>Barbecue setup: ₹500 per use — includes grill, skewers, and 2 kg charcoal.</li>
+                            <li>Any damage to property, furniture, fixtures, amenities, or decor results in additional charges.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="rule-cat-card" onclick="toggleRuleCategory(this)">
+                    <button class="rule-cat-header">
+                        <span class="rule-cat-icon" style="background:#dbeafe; color:#2563eb;"><i class="fa-solid fa-water-ladder"></i></span>
+                        <span class="font-bold text-sm text-[--brand-navy]">Amenities & Housekeeping</span>
+                        <span class="rule-cat-count">4</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 rule-cat-chevron"></i>
+                    </button>
+                    <div class="rule-cat-body">
+                        <ul class="list-disc pl-5 space-y-1.5 text-sm text-gray-700 leading-relaxed">
+                            <li>Towels are provided every 2 days per guest for multi-night bookings.</li>
+                            <li>Bedsheets are changed every 3 days for multi-night bookings.</li>
+                            <li>Pool access: 8:00 AM – 10:00 PM. Strictly prohibited after 10:00 PM.</li>
+                            <li>Power outages from MSEB are beyond our control. Inverter backup lasts ~2–3 hours; no refund for outages.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="rule-cat-card" onclick="toggleRuleCategory(this)">
+                    <button class="rule-cat-header">
+                        <span class="rule-cat-icon" style="background:#ede9fe; color:#7c3aed;"><i class="fa-solid fa-music"></i></span>
+                        <span class="font-bold text-sm text-[--brand-navy]">Noise, Decor & Conduct</span>
+                        <span class="rule-cat-count">4</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 rule-cat-chevron"></i>
+                    </button>
+                    <div class="rule-cat-body">
+                        <ul class="list-disc pl-5 space-y-1.5 text-sm text-gray-700 leading-relaxed">
+                            <li>Outdoor music permitted until 10:00 PM; after that, indoors only at moderate volume.</li>
+                            <li>Decorations need caretaker approval — not allowed on interior walls, furniture, or other surfaces. Unauthorized decor may incur charges.</li>
+                            <li>Smoking is permitted in outdoor areas only — strictly prohibited inside the villa.</li>
+                            <li>Respectful behavior toward staff is mandatory. Abusive conduct may result in immediate eviction without refund.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="rule-cat-card" onclick="toggleRuleCategory(this)">
+                    <button class="rule-cat-header">
+                        <span class="rule-cat-icon" style="background:#dcfce7; color:#16a34a;"><i class="fa-solid fa-paw"></i></span>
+                        <span class="font-bold text-sm text-[--brand-navy]">Guests, ID & Pets</span>
+                        <span class="rule-cat-count">2</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-400 rule-cat-chevron"></i>
+                    </button>
+                    <div class="rule-cat-body">
+                        <ul class="list-disc pl-5 space-y-1.5 text-sm text-gray-700 leading-relaxed">
+                            <li>Valid government-issued photo ID required for all guests at check-in.</li>
+                            <li>Pets welcome (max 2 free; ₹1,000/extra pet/stay) — not allowed on beds, sofas, or in the pool. Owners must clean up after pets.</li>
+                        </ul>
+                    </div>
+                </div>
+
             </div>
         </div>
     </section>
@@ -626,6 +732,10 @@
             if (!isActive) element.classList.add("active");
         }
 
+        function toggleRuleCategory(element) {
+            element.classList.toggle("active");
+        }
+
         // Navbar: no shadow at top, shadow when scrolled
         (function() {
             const nav = document.getElementById('mainNav');
@@ -674,17 +784,6 @@
         const grid  = document.getElementById('propertyGrid');
         const count = document.getElementById('propertyCount');
         grid.innerHTML = '';
-
-        // ── Lazy load observer — hoisted so it's accessible after forEach ──
-        const lazyObs = 'IntersectionObserver' in window ? new IntersectionObserver(function(entries) {
-            entries.forEach(function(e) {
-                if (e.isIntersecting) {
-                    var img = e.target;
-                    if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
-                    lazyObs.unobserve(img);
-                }
-            });
-        }, { rootMargin: '200px' }) : null;
         count.innerText = `${properties.length} ${properties.length === 1 ? 'space' : 'spaces'} available`;
 
         if (properties.length === 0) {
@@ -799,7 +898,16 @@
                 return url.replace('/upload/', '/upload/w_' + w + ',h_' + h + ',c_fill,q_auto,f_auto/');
             }
 
-            // ── Lazy load observer (hoisted — see top of renderProperties) ──
+            // ── Lazy load observer ──
+            const lazyObs = 'IntersectionObserver' in window ? new IntersectionObserver(function(entries) {
+                entries.forEach(function(e) {
+                    if (e.isIntersecting) {
+                        var img = e.target;
+                        if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
+                        lazyObs.unobserve(img);
+                    }
+                });
+            }, { rootMargin: '200px' }) : null;
 
             // Image gallery — supports item.images[] (multi-photo auto-slide);
             // falls back to single item.image when backend only sends one photo.
