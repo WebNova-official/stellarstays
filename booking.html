@@ -74,8 +74,12 @@
     <div class="absolute z-20 left-4 md:left-8 top-[32px] md:top-[16px] cursor-pointer" onclick="window.location.href='index.html'">
         <img src="logo.jpeg" alt="Stellar Stays" class="w-[46px] h-[46px] md:w-[80px] md:h-[80px]" style="border-radius:50%; object-fit:contain; background:#0f1f3d; box-shadow:0 4px 20px rgba(15,31,61,0.30), 0 0 0 4px #fff;" />
     </div>
+    <!-- Back to main page (placed right after logo, always visible) -->
+    <a href="index.html" class="hidden sm:flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-[#0f1f3d] transition pl-[110px]">
+        <i class="fa-solid fa-arrow-left"></i> Back to Main Page
+    </a>
     <!-- Villa title + dates (offset to clear logo) -->
-    <div class="hidden md:flex items-center gap-2 text-sm font-medium text-gray-600 min-w-0 flex-1 pl-[110px]">
+    <div class="hidden md:flex items-center gap-2 text-sm font-medium text-gray-600 min-w-0 flex-1 pl-6">
         <span id="navVillaTitle" class="text-[#0f1f3d] font-bold truncate"></span>
         <span class="text-gray-300 shrink-0">|</span>
         <span id="navDates" class="text-gray-400 text-xs shrink-0"></span>
@@ -95,6 +99,11 @@
 
     <!-- Photo Slider + Video Toggle -->
     <div class="max-w-7xl mx-auto px-4 md:px-6 pt-5">
+
+        <!-- Mobile-only back link (logo overlaps top row on small screens) -->
+        <a href="index.html" class="sm:hidden inline-flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-[#0f1f3d] transition mb-2">
+            <i class="fa-solid fa-arrow-left"></i> Back to Main Page
+        </a>
 
         <!-- Toggle Pills — pushed down on mobile so logo doesn't overlap -->
         <div class="flex items-center gap-2 mb-3 pt-10 md:pt-0">
