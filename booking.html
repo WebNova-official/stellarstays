@@ -739,16 +739,16 @@
                 <h5 class="text-gray-200 font-bold text-sm tracking-wide">Explore</h5>
                 <ul class="space-y-2.5">
                     <li><a href="index.html" class="hover:text-white transition">Home</a></li>
-                    <li><a href="#destinations" class="hover:text-white transition">Destinations</a></li>
+                    <li><a href="index.html#destinations" class="hover:text-white transition">Destinations</a></li>
                     <li><a href="about-us.html" class="hover:text-white transition">About Us</a></li>
                 </ul>
             </div>
             <div class="space-y-3">
                 <h5 class="text-gray-200 font-bold text-sm tracking-wide">Policies</h5>
                 <ul class="space-y-2.5">
-                    <li><a href="#faq" class="hover:text-white transition">FAQ</a></li>
-                    <li><a href="#policies" class="hover:text-white transition">House Rules</a></li>
-                    <li><a href="#policies" class="hover:text-white transition">Cancellation &amp; Refund</a></li>
+                    <li><a href="#tab-faq" onclick="scrollToSection('faq');return false;" class="hover:text-white transition">FAQ</a></li>
+                    <li><a href="#tab-faq" onclick="scrollToSection('faq');return false;" class="hover:text-white transition">House Rules</a></li>
+                    <li><a href="#tab-faq" onclick="scrollToSection('faq');return false;" class="hover:text-white transition">Cancellation &amp; Refund</a></li>
                 </ul>
             </div>
         </div>
@@ -759,7 +759,7 @@
     </div>
 
     <!-- WhatsApp FAB -->
-    <a href="https://wa.me/918655444465" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 z-50 bg-emerald-500 text-white w-14 h-14 rounded-full flex items-center justify-center text-3xl shadow-2xl hover:bg-emerald-600 hover:scale-110 transition duration-300 group">
+    <a href="https://wa.me/918655444465" target="_blank" rel="noopener noreferrer" class="fixed bottom-24 lg:bottom-6 right-6 z-50 bg-emerald-500 text-white w-14 h-14 rounded-full flex items-center justify-center text-3xl shadow-2xl hover:bg-emerald-600 hover:scale-110 transition duration-300 group">
         <i class="fa-brands fa-whatsapp"></i>
         <span class="absolute right-16 bg-white text-gray-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-gray-200 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap">Chat with Us</span>
     </a>
@@ -1213,7 +1213,7 @@ async function loadBookingPage() {
             faqContainer.innerHTML = faqs.map(function(f) {
                 return '<div class="faq-item bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">'
                     + '<button class="w-full flex items-center justify-between px-5 py-4 text-left font-bold text-sm text-[#0f1f3d] hover:bg-gray-50 transition" onclick="this.closest(\'.faq-item\').classList.toggle(\'active\')">'
-                    + '<span>' + f.q + '</span><i class="fa-solid fa-chevron-down text-gray-400 text-xs faq-icon transition-transform duration-300 shrink-0 ml-3"></i></button>'
+                    + '<span class="flex-1">' + f.q + '</span><i class="fa-solid fa-chevron-down text-gray-400 text-xs faq-icon transition-transform duration-300 shrink-0 ml-3"></i></button>'
                     + '<div class="faq-answer px-5 pb-4 text-sm text-gray-600 leading-relaxed">' + f.a + '</div></div>';
             }).join('');
         }
