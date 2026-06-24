@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us | StellarStays</title>
+    <meta name="description" content="Learn how StellarStays partners with villa owners across India to deliver thoughtfully managed, memorable stays for guests.">
+    <meta property="og:title" content="About Us | StellarStays">
+    <meta property="og:description" content="Learn how StellarStays partners with villa owners across India to deliver thoughtfully managed, memorable stays for guests.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="logo.jpeg">
+    <link rel="icon" href="logo.jpeg" type="image/jpeg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --brand-navy: #0f1f3d;
+            --brand-amber: #f59e0b;
+            --brand-coral: #ef4444;
+            --brand-cream: #fdf8f0;
+            --brand-teal: #0d9488;
+        }
+        body { font-family: 'DM Sans', sans-serif; background: #f8f7f4; }
+        h1, h2, h3, .display { font-family: 'Playfair Display', serif; }
+
+        /* Replicating the warm, crumpled paper canvas texture seen in Screenshot 1169 */
+        .story-texture-bg {
+            background-color: #fcfbfa;
+            background-image: url('https://www.transparenttextures.com/patterns/cream-paper.png');
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- ===================== NAVIGATION ===================== -->
+    <nav id="mainNav" class="bg-white fixed top-0 left-0 right-0 z-50 px-6 md:px-10 flex justify-between items-center border-b border-gray-100" style="box-shadow:0 2px 16px rgba(15,31,61,0.08); height:70px;">
+        <!-- Left logo - overflows below navbar, anchored left on all devices -->
+        <div class="cursor-pointer absolute z-20 left-4 md:left-8 top-[32px] md:top-[16px]" onclick="window.location.href='index.html'">
+            <img src="logo.jpeg" alt="Stellar Stays" class="w-[46px] h-[46px] md:w-[80px] md:h-[80px]" style="border-radius:50%; object-fit:contain; background:#0f1f3d; box-shadow:0 4px 20px rgba(15,31,61,0.30), 0 0 0 4px #fff;" />
+        </div>
+
+        <!-- Links + icons in one row, spread evenly across full width after the logo -->
+        <div class="hidden md:flex flex-1 items-center justify-between md:pl-[170px]">
+            <div class="flex items-center space-x-7 font-semibold text-sm text-gray-600">
+                <a href="index.html" class="hover:text-[--brand-navy] transition">Home</a>
+                <a href="index.html#destinations" class="hover:text-[--brand-navy] transition">Destinations</a>
+                <a href="about-us.html" class="hover:text-[--brand-navy] transition">About Us</a>
+                <a href="index.html#faq" class="hover:text-[--brand-navy] transition">FAQ</a>
+                <a href="index.html#policies" class="hover:text-[--brand-navy] transition">Policies</a>
+            </div>
+
+            <div class="flex items-center space-x-6">
+            <a href="tel:+918655444465" style="background:#0f1f3d; border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;" class="hover:opacity-85 transition">
+                <i class="fa-solid fa-phone text-white text-sm"></i>
+            </a>
+            <a href="mailto:info@stellarstays.com" style="background:#ea4335; border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;" class="hover:opacity-85 transition">
+                <i class="fa-solid fa-envelope text-white text-sm"></i>
+            </a>
+            <a href="https://g.page/r/YOUR_GOOGLE_REVIEW_LINK" target="_blank" style="background:#fff; border:2px solid #e5e7eb; border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;" class="hover:opacity-85 transition" title="Leave us a Google Review">
+                <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                    <path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/>
+                    <path fill="#34A853" d="M6.3 14.7l7 5.1C15 16.1 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 16.3 2 9.7 7.4 6.3 14.7z"/>
+                    <path fill="#FBBC05" d="M24 46c5.5 0 10.5-1.9 14.4-5l-6.7-5.5C29.6 37 26.9 38 24 38c-6 0-11.1-4-12.9-9.5l-7 5.4C7.8 41.5 15.3 46 24 46z"/>
+                    <path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.9 2.6-2.6 4.8-4.9 6.3l6.7 5.5C41.5 37.3 46 31 46 24c0-1.3-.2-2.7-.5-4z"/>
+                </svg>
+            </a>
+            <a href="https://www.instagram.com/" target="_blank" style="background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;" class="hover:opacity-85 transition">
+                <i class="fa-brands fa-instagram text-white text-base"></i>
+            </a>
+            <a href="https://wa.me/918655444465" target="_blank" style="background:#25d366; border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;" class="hover:opacity-85 transition">
+                <i class="fa-brands fa-whatsapp text-white text-base"></i>
+            </a>
+            </div>
+        </div>
+
+        <!-- Mobile hamburger -->
+        <button id="hamburgerBtn" onclick="toggleMobileNav()" class="md:hidden ml-auto z-30 w-10 h-10 flex items-center justify-center rounded-full" style="background:#0f1f3d;">
+            <i class="fa-solid fa-bars text-white text-base"></i>
+        </button>
+    </nav>
+
+    <!-- Mobile nav overlay + panel -->
+    <div id="mobileNavOverlay" onclick="toggleMobileNav()" class="md:hidden fixed inset-0 bg-black/50 z-40 hidden"></div>
+    <div id="mobileNavPanel" class="md:hidden fixed top-0 right-0 h-full w-[78%] max-w-xs bg-white z-50 shadow-2xl translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+        <div class="flex items-center justify-between px-5 border-b border-gray-100" style="height:70px;">
+            <span class="font-bold text-[--brand-navy] display text-lg">Menu</span>
+            <button onclick="toggleMobileNav()" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100">
+                <i class="fa-solid fa-xmark text-gray-500"></i>
+            </button>
+        </div>
+        <div class="flex flex-col px-5 py-4 space-y-1 font-semibold text-sm text-gray-700">
+            <a href="index.html" class="py-2.5 border-b border-gray-50 hover:text-[--brand-navy] transition">Home</a>
+            <a href="index.html#destinations" onclick="toggleMobileNav()" class="py-2.5 border-b border-gray-50 hover:text-[--brand-navy] transition">Destinations</a>
+            <a href="about-us.html" class="py-2.5 border-b border-gray-50 hover:text-[--brand-navy] transition">About Us</a>
+            <a href="index.html#faq" onclick="toggleMobileNav()" class="py-2.5 border-b border-gray-50 hover:text-[--brand-navy] transition">FAQ</a>
+            <a href="index.html#policies" onclick="toggleMobileNav()" class="py-2.5 hover:text-[--brand-navy] transition">Policies</a>
+        </div>
+        <div class="flex items-center gap-3 px-5 py-4 mt-auto border-t border-gray-100">
+            <a href="tel:+918655444465" style="background:#0f1f3d; border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;">
+                <i class="fa-solid fa-phone text-white text-sm"></i>
+            </a>
+            <a href="mailto:info@stellarstays.com" style="background:#ea4335; border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;">
+                <i class="fa-solid fa-envelope text-white text-sm"></i>
+            </a>
+            <a href="https://www.instagram.com/" target="_blank" style="background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;">
+                <i class="fa-brands fa-instagram text-white text-base"></i>
+            </a>
+            <a href="https://wa.me/918655444465" target="_blank" style="background:#25d366; border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;">
+                <i class="fa-brands fa-whatsapp text-white text-base"></i>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        function toggleMobileNav() {
+            document.getElementById('mobileNavPanel').classList.toggle('translate-x-full');
+            document.getElementById('mobileNavOverlay').classList.toggle('hidden');
+        }
+    </script>
+
+    <section class="story-texture-bg pt-[140px] md:pt-[160px] pb-16 px-6 border-b border-gray-200/60">
+        <div class="max-w-3xl mx-auto space-y-6 text-gray-800">
+
+            <h1 class="text-3xl md:text-4xl font-black text-slate-900 tracking-tight text-center mb-8">
+                StellarStays Story
+            </h1>
+
+            <p class="text-sm md:text-base leading-relaxed text-slate-700 font-medium">
+                Founded in 2020, Stellar Stays was created with a simple vision – to bring together exceptional hospitality and smart property management while creating value for both property owners and guests. We partner with villa owners to maximize the potential and returns of their properties, while offering guests thoughtfully managed stays designed around comfort, quality, and memorable experiences.
+            </p>
+
+            <p class="text-sm md:text-base leading-relaxed text-slate-700 font-medium">
+                From carefully curating each home to managing every detail of the guest journey, our focus is on delivering seamless service and meaningful experiences. Through trusted operations, attention to detail, and a passion for hospitality, we create stays that feel effortless, memorable, and worth returning to. At Stellar Stays, we believe great hospitality creates lasting value for everyone.
+            </p>
+
+        </div>
+    </section>
+
+    <!-- ===================== QUICK FACTS STRIP ===================== -->
+    <section class="bg-white border-b border-gray-100 py-10 px-6">
+        <div class="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+            <div>
+                <div class="text-2xl font-black text-[--brand-navy] display">2020</div>
+                <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Founded</div>
+            </div>
+            <div>
+                <div class="text-2xl font-black text-[--brand-navy] display">Pan-India</div>
+                <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Villas & Homestays</div>
+            </div>
+            <div>
+                <div class="text-2xl font-black text-[--brand-navy] display">Hands-On</div>
+                <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Curated Hosting</div>
+            </div>
+            <div>
+                <div class="text-2xl font-black text-[--brand-navy] display">End-to-End</div>
+                <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Guest Journey</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================== CTA ===================== -->
+    <section class="bg-[--brand-navy] text-white py-20 px-6 w-full">
+        <div class="max-w-3xl mx-auto text-center space-y-6">
+            <h3 class="text-2xl md:text-3xl font-black tracking-tight">Whether you own a villa or you're planning your next trip</h3>
+            <p class="text-gray-400 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
+                We'd love to have you with us — as a partner host or as a guest.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center pt-2">
+                <a href="https://wa.me/918655444465" target="_blank" class="bg-amber-500 hover:bg-amber-600 transition text-[--brand-navy] font-bold px-6 py-3 rounded-full text-sm">List Your Property</a>
+                <a href="index.html#destinations" class="border border-white/30 hover:bg-white/10 transition text-white font-bold px-6 py-3 rounded-full text-sm">Browse Stays</a>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-[--brand-navy] text-gray-400 pt-14 pb-8 px-4 md:px-8 relative mt-auto">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 pb-10 border-b border-white/10">
+            <!-- Brand col -->
+            <div class="space-y-4">
+                <img src="logo.jpeg" alt="Stellar Stays" style="height:70px; width:auto; border-radius:8px;" />
+                <p class="text-xs text-gray-500 font-medium leading-relaxed max-w-xs">
+                    Turn your property into profits with StellarStays. Exceptional property management and premium vacation rentals across India.
+                </p>
+                <div class="flex flex-col gap-2 text-xs font-semibold">
+                    <a href="tel:+918655444465" class="hover:text-white transition flex items-center gap-2"><i class="fa-solid fa-phone w-4"></i> +91 86554 44465</a>
+                    <a href="mailto:info@stellarstays.com" class="hover:text-white transition flex items-center gap-2"><i class="fa-solid fa-envelope w-4"></i> info@stellarstays.com</a>
+                    <a href="https://wa.me/918655444465" target="_blank" class="hover:text-white transition flex items-center gap-2"><i class="fa-brands fa-whatsapp w-4"></i> Chat on WhatsApp</a>
+                </div>
+            </div>
+            <!-- Links col -->
+            <div class="grid grid-cols-2 gap-6 text-xs font-semibold text-gray-500">
+                <div class="space-y-3">
+                    <h5 class="text-gray-200 font-bold text-sm tracking-wide">Explore</h5>
+                    <ul class="space-y-2.5">
+                        <li><a href="index.html" class="hover:text-white transition">Home</a></li>
+                        <li><a href="index.html#destinations" class="hover:text-white transition">Destinations</a></li>
+                        <li><a href="about-us.html" class="hover:text-white transition">About Us</a></li>
+                    </ul>
+                </div>
+                <div class="space-y-3">
+                    <h5 class="text-gray-200 font-bold text-sm tracking-wide">Policies</h5>
+                    <ul class="space-y-2.5">
+                        <li><a href="index.html#faq" class="hover:text-white transition">FAQ</a></li>
+                        <li><a href="index.html#policies" class="hover:text-white transition">House Rules</a></li>
+                        <li><a href="index.html#policies" class="hover:text-white transition">Cancellation & Refund</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="max-w-7xl mx-auto pt-6 flex flex-col sm:flex-row justify-between items-center gap-3 text-[11px] text-gray-600">
+            <span>Copyright © 2026 StellarStays. All rights reserved.</span>
+            <span class="flex items-center gap-1.5"><i class="fa-solid fa-code text-amber-400"></i> Designed & Developed by WebNova</span>
+        </div>
+
+        <a href="https://wa.me/918655444465" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 z-50 bg-emerald-500 text-white w-14 h-14 rounded-full flex items-center justify-center text-3xl shadow-2xl hover:bg-emerald-600 hover:scale-110 transition duration-300 group">
+            <i class="fa-brands fa-whatsapp"></i>
+            <span class="absolute right-16 bg-white text-gray-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-gray-200 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap">Chat with Us</span>
+        </a>
+    </footer>
+
+</body>
+</html>
