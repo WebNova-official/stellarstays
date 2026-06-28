@@ -194,7 +194,7 @@
             font-size: 10px; font-weight: 800; color: #9ca3af; background: #f3f4f6;
             padding: 2px 8px; border-radius: 999px; margin-left: auto; flex-shrink: 0;
         }
-</style>
+    </style>
 </head>
 <body class="flex flex-col min-h-screen">
 
@@ -334,7 +334,6 @@
                 </button>
             </div>
 
-            <!-- Trust badges removed -->
             <p class="text-white/60 text-xs font-medium tracking-wide" style="text-shadow:0 1px 6px rgba(0,0,0,0.4);">🌍 More locations coming soon...</p>
         </div>
     </header>
@@ -345,7 +344,6 @@
             <div class="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
                 <!-- Location pills — populated dynamically by app.js from live DB data -->
                 <div id="locationPills" class="flex items-center gap-2 flex-1 overflow-x-auto no-scrollbar">
-                    <!-- Pills render here once properties load -->
                     <span class="text-xs text-gray-400 font-medium animate-pulse">Loading destinations…</span>
                 </div>
                 <!-- Right side badges -->
@@ -750,7 +748,7 @@
             updateNav();
         })();
     </script>
-    
+
 
     <script>
     // ============================================================
@@ -760,16 +758,12 @@
 
     // ── API base: works for Live Server (:5500) AND direct (:5000)
     function getApiBase() {
-    const { hostname, port } = window.location;
-
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return port === '5000'
-            ? '/api'
-            : 'http://localhost:5000/api';
+        const { hostname, port } = window.location;
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return port === '5000' ? '/api' : 'http://localhost:5000/api';
+        }
+        return 'https://stellarstays.onrender.com/api';
     }
-
-    return 'https://stellarstays.onrender.com/api';
-}
 
     // ── Navigate to booking page
     function goToBooking(id) {
@@ -777,6 +771,12 @@
         const checkOut = document.getElementById('endDateInput').value    || '';
         const guests   = document.getElementById('searchGuests').value    || '1';
         window.location.href = `booking.html?id=${id}&checkIn=${checkIn}&checkOut=${checkOut}&adults=${guests}`;
+    }
+
+    // ── Cloudinary URL optimizer
+    function optimizeCldUrl(url, w, h) {
+        if (!url || !url.includes('cloudinary.com')) return url;
+        return url.replace('/upload/', '/upload/w_' + w + ',h_' + h + ',c_fill,q_auto,f_auto/');
     }
 
     // ── Render property cards
@@ -796,152 +796,116 @@
             return;
         }
 
-        properties.forEach((item, idx) => {
-            const amenityIcons = {
-                // Water
-                'Pool': ['fa-water-ladder', '#3b82f6'],
-                'Swimming Pool': ['fa-water-ladder', '#3b82f6'],
-                'Private Pool': ['fa-water-ladder', '#3b82f6'],
-                'Kids Pool': ['fa-child-reaching', '#38bdf8'],
-                'Hot Tub': ['fa-hot-tub-person', '#f97316'],
-                'Bathtub': ['fa-bath', '#a78bfa'],
-                // Connectivity
-                'WiFi': ['fa-wifi', '#8b5cf6'],
-                'Wifi': ['fa-wifi', '#8b5cf6'],
-                // Climate
-                'AC': ['fa-snowflake', '#06b6d4'],
-                'Air Conditioning': ['fa-snowflake', '#06b6d4'],
-                // Food
-                'Kitchen': ['fa-utensils', '#f59e0b'],
-                'Meals': ['fa-utensils', '#f59e0b'],
-                'Private Chef': ['fa-hat-chef', '#ef4444'],
-                // Entertainment
-                'Smart TV': ['fa-tv', '#0ea5e9'],
-                'TV': ['fa-tv', '#0ea5e9'],
-                'Projector': ['fa-film', '#6366f1'],
-                'Pool Table': ['fa-circle-dot', '#10b981'],
-                'TT Table': ['fa-table-tennis-paddle-ball', '#f59e0b'],
-                'Carrom': ['fa-chess-board', '#94a3b8'],
-                'Bluetooth Speaker': ['fa-music', '#ec4899'],
-                'Badminton': ['fa-shuttlecock', '#84cc16'],
-                // Outdoors
-                'Garden': ['fa-seedling', '#22c55e'],
-                'Parking': ['fa-car', '#64748b'],
-                'Private Parking': ['fa-car', '#64748b'],
-                // Misc
-                'BBQ': ['fa-fire', '#ef4444'],
-                'Gym': ['fa-dumbbell', '#6366f1'],
-                'Balcony': ['fa-building', '#94a3b8'],
-            };
+        // ── FIX: lazyObs defined ONCE here, at renderProperties scope,
+        //         so it is visible both inside the forEach and after it.
+        const lazyObs = ('IntersectionObserver' in window)
+            ? new IntersectionObserver(function(entries) {
+                entries.forEach(function(e) {
+                    if (e.isIntersecting) {
+                        var img = e.target;
+                        if (img.dataset.src) {
+                            img.src = img.dataset.src;
+                            img.removeAttribute('data-src');
+                        }
+                        lazyObs.unobserve(img);
+                    }
+                });
+              }, { rootMargin: '200px' })
+            : null;
 
+        const amenityIcons = {
+            // Water
+            'Pool': ['fa-water-ladder', '#3b82f6'],
+            'Swimming Pool': ['fa-water-ladder', '#3b82f6'],
+            'Private Pool': ['fa-water-ladder', '#3b82f6'],
+            'Kids Pool': ['fa-child-reaching', '#38bdf8'],
+            'Hot Tub': ['fa-hot-tub-person', '#f97316'],
+            'Bathtub': ['fa-bath', '#a78bfa'],
+            // Connectivity
+            'WiFi': ['fa-wifi', '#8b5cf6'],
+            'Wifi': ['fa-wifi', '#8b5cf6'],
+            // Climate
+            'AC': ['fa-snowflake', '#06b6d4'],
+            'Air Conditioning': ['fa-snowflake', '#06b6d4'],
+            // Food
+            'Kitchen': ['fa-utensils', '#f59e0b'],
+            'Meals': ['fa-utensils', '#f59e0b'],
+            'Private Chef': ['fa-hat-chef', '#ef4444'],
+            // Entertainment
+            'Smart TV': ['fa-tv', '#0ea5e9'],
+            'TV': ['fa-tv', '#0ea5e9'],
+            'Projector': ['fa-film', '#6366f1'],
+            'Pool Table': ['fa-circle-dot', '#10b981'],
+            'TT Table': ['fa-table-tennis-paddle-ball', '#f59e0b'],
+            'Carrom': ['fa-chess-board', '#94a3b8'],
+            'Bluetooth Speaker': ['fa-music', '#ec4899'],
+            'Badminton': ['fa-shuttlecock', '#84cc16'],
+            // Outdoors
+            'Garden': ['fa-seedling', '#22c55e'],
+            'Parking': ['fa-car', '#64748b'],
+            'Private Parking': ['fa-car', '#64748b'],
+            // Misc
+            'BBQ': ['fa-fire', '#ef4444'],
+            'Gym': ['fa-dumbbell', '#6366f1'],
+            'Balcony': ['fa-building', '#94a3b8'],
+        };
+
+        properties.forEach((item, idx) => {
             // Smart chip selection: pick the 3 most differentiating amenities
             const PRIORITY = ['Private Chef','Hot Tub','Bathtub','Kids Pool','Pool Table','Projector','TT Table','Garden','Meals','Pool','WiFi','Kitchen','Parking'];
             const rawAmenities = (item.amenities && item.amenities.length > 0) ? item.amenities : ['Pool','WiFi','Kitchen'];
-            const sortedAmenities = [...rawAmenities].sort((a,b) => {
+            const sortedAmenities = [...rawAmenities].sort((a, b) => {
                 const ai = PRIORITY.indexOf(a), bi = PRIORITY.indexOf(b);
                 return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
             });
             const amenities = sortedAmenities.slice(0, 3);
 
-            const amenityChips = amenities.map(a => {
-                const [icon, color] = amenityIcons[a] || ['fa-circle-check', '#6b7280'];
-                return `<span class="amenity-chip">
-                    <i class="fa-solid ${icon}" style="color:${color}; font-size:10px;"></i>${a}
-                </span>`;
-            }).join('');
-
             const price  = item.pricePerNight || 0;
             const rating = item.rating || 4.8;
-            const ratingColor = rating >= 4.5 ? '#16a34a' : rating >= 4 ? '#d97706' : '#6b7280';
             const ratingLabel = rating >= 4.8 ? 'Excellent' : rating >= 4.5 ? 'Superb' : rating >= 4 ? 'Great' : 'Good';
             const location = (item.location || 'Lonavala, Maharashtra');
             const city = location.split(',')[0].trim();
             const region = location.split(',')[1]?.trim() || 'Maharashtra';
 
-            // Guest range: show "upto X" or range if item has minGuests
             const guestMin = item.minGuests || Math.max(2, Math.floor((item.guests || 4) / 2));
             const guestMax = item.guests || 0;
             const guestLabel = guestMax ? `${guestMin}–${guestMax} Guests` : 'Guests';
 
-            // Category tags (Signature / Escapes / New based on data hints)
-            const isNew = item.isNew || false;
             const isSignature = item.isSignature || (price >= 20000);
-            const isEscape = item.isEscape || (!isSignature);
-            const catTags = [
-                isEscape    ? `<span class="cat-tag"><i class="fa-solid fa-sun text-amber-400" style="font-size:9px;"></i> Escapes</span>` : '',
-                isSignature ? `<span class="cat-tag" style="border-color:#0f1f3d; color:#0f1f3d;"><i class="fa-solid fa-crown text-[#0f1f3d]" style="font-size:9px;"></i> Signature</span>` : '',
-                isNew       ? `<span class="cat-tag" style="border-color:#16a34a; color:#16a34a; background:#f0fdf4;">New</span>` : '',
-            ].filter(Boolean).join('');
+            const isEscape    = item.isEscape    || (!isSignature);
+            const isNew       = item.isNew       || false;
 
-            // Landmark proximity (use item.landmark if present, else generic)
-            const landmark = item.landmark
-                ? `<span class="text-[10px] font-semibold flex items-center gap-1" style="color:#2563eb;">
-                       <i class="fa-solid fa-location-pin" style="font-size:9px;"></i>${item.landmark}
-                   </span>`
-                : `<span class="text-[10px] font-semibold flex items-center gap-1" style="color:#2563eb;">
-                       <i class="fa-solid fa-location-pin" style="font-size:9px;"></i>Near ${city} town centre
-                   </span>`;
-
-            // Offer badge
             const offerBadge = item.offer
                 ? `<span class="offer-badge"><i class="fa-solid fa-tag" style="font-size:9px;"></i>${item.offer}</span>`
                 : (item.hot ? `<span class="offer-badge" style="border-color:#ef4444; color:#ef4444; background:#fff5f5;"><i class="fa-solid fa-fire" style="font-size:9px;"></i>Hot Price</span>` : '');
 
-            // Tagline / description snippet
-            const tagline = item.description
-                ? `<p class="card-tagline">${item.description}</p>`
-                : `<p class="card-tagline">A handpicked ${item.bedrooms || ''}BHK retreat in the heart of ${city} — ideal for families & groups seeking privacy.</p>`;
-
-            // ── Cloudinary URL optimizer ──
-            function optimizeCldUrl(url, w, h) {
-                if (!url || !url.includes('cloudinary.com')) return url;
-                return url.replace('/upload/', '/upload/w_' + w + ',h_' + h + ',c_fill,q_auto,f_auto/');
-            }
-
-            // ── Lazy load observer ──
-            const lazyObs = 'IntersectionObserver' in window ? new IntersectionObserver(function(entries) {
-                entries.forEach(function(e) {
-                    if (e.isIntersecting) {
-                        var img = e.target;
-                        if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
-                        lazyObs.unobserve(img);
-                    }
-                });
-            }, { rootMargin: '200px' }) : null;
-
-            // Image gallery — supports item.images[] (multi-photo auto-slide);
-            // falls back to single item.image when backend only sends one photo.
+            // Image gallery
             const fallbackImg = 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=600&q=80';
-            const galleryImgs = Array.isArray(item.gallery) ? item.gallery.filter(Boolean) : [];
-            const namedImgsArr = Array.isArray(item.images) ? item.images.filter(Boolean) : [];
-            const coverImg = item.image ? [item.image] : [];
-            // Cover photo first, then gallery/images[] shots — de-duped, falls back to placeholder if none exist
+            const galleryImgs  = Array.isArray(item.gallery) ? item.gallery.filter(Boolean) : [];
+            const namedImgsArr = Array.isArray(item.images)  ? item.images.filter(Boolean)  : [];
+            const coverImg     = item.image ? [item.image] : [];
             let imgsArr = [...new Set([...coverImg, ...namedImgsArr, ...galleryImgs])];
             if (imgsArr.length === 0) imgsArr = [fallbackImg];
 
             const imgStack = imgsArr.map((src, i) => {
                 const optSrc = optimizeCldUrl(src, 600, 560);
                 if (i === 0) {
-                    // first image: load immediately
                     return `<img src="${optSrc}" alt="${item.name || 'Property'}" class="card-img w-full h-full object-cover active-img" onerror="this.src='${fallbackImg}'">`;
                 } else {
-                    // rest: lazy load
                     return `<img src="" data-src="${optSrc}" alt="${item.name || 'Property'}" class="card-img w-full h-full object-cover lazy-card-img" onerror="this.src='${fallbackImg}'">`;
                 }
             }).join('');
 
-            // Carousel dots — one per image, only rendered when there's more than one photo
             const dots = imgsArr.length > 1
                 ? `<div class="carousel-dots absolute left-1/2 z-20" style="transform:translateX(-50%); top:12px;">
                     ${imgsArr.map((_, i) => `<span class="${i === 0 ? 'active' : ''}"></span>`).join('')}
-                </div>`
+                  </div>`
                 : '';
 
             const cardId = `card-${idx}`;
 
-            // WhatsApp share link — message + absolute booking URL
-            const bookingUrl = new URL(`booking.html?id=${item._id}`, window.location.href).href;
-            const shareText = `Check out ${item.name || 'this stay'} in ${city}, ${region} — ₹${price.toLocaleString('en-IN')}/night, rated ${rating}★.\n${bookingUrl}`;
+            const bookingUrl  = new URL(`booking.html?id=${item._id}`, window.location.href).href;
+            const shareText   = `Check out ${item.name || 'this stay'} in ${city}, ${region} — ₹${price.toLocaleString('en-IN')}/night, rated ${rating}★.\n${bookingUrl}`;
             const whatsappHref = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
             grid.innerHTML += `
@@ -969,7 +933,7 @@
                         <!-- Hot badge — top left -->
                         ${item.hot ? `<span class="absolute top-3 left-3 z-20 text-white text-[10px] font-black px-2.5 py-1 rounded-full hot-badge" style="background:rgba(239,68,68,0.92); backdrop-filter:blur(6px);">🔥 Hot</span>` : ''}
 
-                        <!-- Rating pill — overlaid on image, bottom-left area above gradient -->
+                        <!-- Rating + title overlay -->
                         <div class="absolute bottom-0 left-0 right-0 z-20 px-4 pb-4">
                             <div class="flex items-center justify-between mb-1">
                                 <span class="flex items-center gap-1.5 text-white text-[11px] font-bold"
@@ -978,7 +942,6 @@
                                     ${rating}/5
                                     <span class="font-normal text-white/75">${ratingLabel}</span>
                                 </span>
-                                <!-- Direct badge -->
                                 <span class="flex items-center gap-1 text-white text-[10px] font-bold px-2 py-0.5 rounded-full" style="background:rgba(15,31,61,0.82); backdrop-filter:blur(6px);">
                                     <i class="fa-solid fa-bolt text-amber-400" style="font-size:8px;"></i> Direct
                                 </span>
@@ -1011,7 +974,7 @@
                             </span>
                         </div>
 
-                        <!-- Amenity chips — top 3 differentiators -->
+                        <!-- Amenity chips -->
                         <div class="flex flex-wrap gap-1.5">
                             ${amenities.map(a => {
                                 const [icon, color] = amenityIcons[a] || ['fa-circle-check', '#6b7280'];
@@ -1019,7 +982,7 @@
                             }).join('')}
                         </div>
 
-                        <!-- Offer badge (only if exists) -->
+                        <!-- Offer badge -->
                         ${offerBadge ? `<div>${offerBadge}</div>` : ''}
 
                         <!-- Divider -->
@@ -1040,9 +1003,9 @@
                         </div>
                     </div>
                 </div>`;
-        });
+        }); // end forEach
 
-        // Attach lazy observer to all non-first card images
+        // ── Attach lazy observer — lazyObs is in scope here now ✅
         if (lazyObs) {
             document.querySelectorAll('img.lazy-card-img[data-src]').forEach(function(img) {
                 lazyObs.observe(img);
@@ -1050,9 +1013,9 @@
         }
 
         startCardCarousels();
-    }
+    } // end renderProperties
 
-    // ── Auto-slide images on each card (pauses on hover, only runs for cards with >1 photo)
+    // ── Auto-slide images on each card (pauses on hover)
     let cardCarouselIntervals = [];
     function startCardCarousels() {
         cardCarouselIntervals.forEach(clearInterval);
@@ -1062,10 +1025,10 @@
             const count = parseInt(zone.dataset.count, 10) || 1;
             if (count <= 1) return;
 
-            const imgs = zone.querySelectorAll('.card-img');
-            const dots = zone.querySelectorAll('.carousel-dots span');
-            let index = 0;
-            let paused = false;
+            const imgs  = zone.querySelectorAll('.card-img');
+            const dots  = zone.querySelectorAll('.carousel-dots span');
+            let index   = 0;
+            let paused  = false;
 
             const advance = () => {
                 if (paused) return;
@@ -1126,7 +1089,7 @@
 
     // ── Load from API
     async function loadProperties() {
-        const API = getApiBase();
+        const API  = getApiBase();
         const grid  = document.getElementById('propertyGrid');
         const count = document.getElementById('propertyCount');
 
@@ -1168,7 +1131,7 @@
     function toggleWish(id) {
         const btn = document.getElementById(id);
         if (!btn) return;
-        btn.classList.toggle("liked");
+        btn.classList.toggle('liked');
     }
 
     window.onload = loadProperties;
