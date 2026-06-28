@@ -299,28 +299,63 @@
         <div class="relative z-10 max-w-5xl mx-auto text-center space-y-5 w-full">
             <!-- BIG LOGO in hero -->
             <h1 class="text-3xl md:text-4xl lg:text-5xl font-black text-white leading-tight tracking-tight" style="text-shadow:0 2px 16px rgba(0,0,0,0.5);">
-                Book Your Happy Vacation Stay 🏡
+                For a Stellar Experience ✨
             </h1>
             <p class="text-white/85 text-sm md:text-base font-medium" style="text-shadow:0 1px 8px rgba(0,0,0,0.4);">Handpicked villas, just for you — in the heart of Lonavala</p>
 
-            <!-- SEARCH BAR -->
-            <div class="search-wrap bg-white rounded-full border border-gray-200 p-1.5 flex items-center max-w-3xl mx-auto shadow-2xl">
-                <div class="flex-1 flex items-center divide-x divide-gray-200">
+            <!-- SEARCH BAR — desktop: single pill row | mobile: stacked card -->
+            <div class="search-wrap bg-white rounded-3xl md:rounded-full border border-gray-200 p-3 md:p-1.5 max-w-3xl mx-auto shadow-2xl">
+
+                <!-- Mobile layout: stacked fields -->
+                <div class="flex flex-col gap-2 md:hidden">
+                    <div class="flex flex-col gap-0.5 px-3 py-2 bg-gray-50 rounded-2xl">
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Where</span>
+                        <input type="text" id="searchLocation" placeholder="Search destination or property" class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent">
+                    </div>
+                    <div class="flex gap-2">
+                        <div class="flex-1 flex flex-col gap-0.5 px-3 py-2 bg-gray-50 rounded-2xl cursor-pointer" id="triggerCheckIn">
+                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Start Date</span>
+                            <input type="text" id="startDateInput" placeholder="Add date" readonly class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent cursor-pointer">
+                        </div>
+                        <div class="flex-1 flex flex-col gap-0.5 px-3 py-2 bg-gray-50 rounded-2xl cursor-pointer" id="triggerCheckOut">
+                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">End Date</span>
+                            <input type="text" id="endDateInput" placeholder="Add date" readonly class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent cursor-pointer">
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1 flex flex-col gap-0.5 px-3 py-2 bg-gray-50 rounded-2xl">
+                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Guests</span>
+                            <select id="searchGuests" class="w-full bg-transparent focus:outline-none text-sm font-semibold text-[--brand-navy] cursor-pointer">
+                                <option value="1">1 Guest</option>
+                                <option value="2">2 Guests</option>
+                                <option value="4">4 Guests</option>
+                                <option value="6">6 Guests</option>
+                                <option value="8">8+ Guests</option>
+                            </select>
+                        </div>
+                        <button onclick="handleSearch()" class="bg-red-500 hover:bg-red-600 text-white h-12 px-5 rounded-2xl flex items-center gap-2 transition shadow-md shrink-0 font-bold text-sm">
+                            <i class="fa-solid fa-magnifying-glass"></i> Search
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Desktop layout: single pill row -->
+                <div class="hidden md:flex items-center divide-x divide-gray-200">
                     <div class="flex-[2] px-5 py-2">
                         <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Where</div>
-                        <input type="text" id="searchLocation" placeholder="Search Destination or Property" class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent">
+                        <input type="text" id="searchLocationDesktop" placeholder="Search Destination or Property" class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent">
                     </div>
-                    <div class="flex-1 px-5 py-2 cursor-pointer" id="triggerCheckIn">
+                    <div class="flex-1 px-5 py-2 cursor-pointer" id="triggerCheckInDesktop">
                         <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Start Date</div>
-                        <input type="text" id="startDateInput" placeholder="Add date" readonly class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent cursor-pointer">
+                        <input type="text" id="startDateInputDesktop" placeholder="Add date" readonly class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent cursor-pointer">
                     </div>
-                    <div class="flex-1 px-5 py-2 cursor-pointer" id="triggerCheckOut">
+                    <div class="flex-1 px-5 py-2 cursor-pointer" id="triggerCheckOutDesktop">
                         <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">End Date</div>
-                        <input type="text" id="endDateInput" placeholder="Add date" readonly class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent cursor-pointer">
+                        <input type="text" id="endDateInputDesktop" placeholder="Add date" readonly class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent cursor-pointer">
                     </div>
                     <div class="flex-1 px-5 py-2">
                         <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Guests</div>
-                        <select id="searchGuests" class="w-full bg-transparent focus:outline-none text-sm font-semibold text-[--brand-navy] cursor-pointer">
+                        <select id="searchGuestsDesktop" class="w-full bg-transparent focus:outline-none text-sm font-semibold text-[--brand-navy] cursor-pointer">
                             <option value="1">1 Guest</option>
                             <option value="2">2 Guests</option>
                             <option value="4">4 Guests</option>
@@ -328,10 +363,11 @@
                             <option value="8">8+ Guests</option>
                         </select>
                     </div>
+                    <button onclick="handleSearch()" class="bg-red-500 hover:bg-red-600 text-white w-12 h-12 rounded-full flex items-center justify-center transition shadow-md shrink-0 ml-1">
+                        <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                    </button>
                 </div>
-                <button onclick="handleSearch()" class="bg-red-500 hover:bg-red-600 text-white w-12 h-12 rounded-full flex items-center justify-center transition shadow-md shrink-0 ml-1">
-                    <i class="fa-solid fa-magnifying-glass text-sm"></i>
-                </button>
+
             </div>
 
             <p class="text-white/60 text-xs font-medium tracking-wide" style="text-shadow:0 1px 6px rgba(0,0,0,0.4);">🌍 More locations coming soon...</p>
@@ -374,77 +410,6 @@
             <div class="text-gray-400 py-16 col-span-full text-center font-medium animate-pulse">Assembling your dream spaces...</div>
         </div>
     </main>
-
-    <!-- ===================== HOW IT WORKS ===================== -->
-    <section class="bg-[--brand-navy] text-white py-20 px-4 md:px-8">
-        <div class="max-w-6xl mx-auto">
-            <div class="text-center mb-14">
-                <span class="text-amber-400 text-xs font-black uppercase tracking-widest">Zero Commission • Direct Booking</span>
-                <h2 class="text-3xl md:text-4xl font-black mt-3 text-white">How StellarStays Works</h2>
-                <p class="text-gray-400 text-sm md:text-base mt-3 max-w-2xl mx-auto leading-relaxed">
-                    We connect travelers directly with verified property owners — no commission cuts, no platform markups.
-                </p>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div class="text-center space-y-4 group">
-                    <div class="w-16 h-16 bg-amber-500/20 rounded-2xl flex items-center justify-center mx-auto group-hover:bg-amber-500/30 transition">
-                        <i class="fa-solid fa-magnifying-glass text-amber-400 text-2xl"></i>
-                    </div>
-                    <div class="text-amber-400 text-xs font-black uppercase tracking-widest">Step 01</div>
-                    <h3 class="text-lg font-bold text-white">Search & Discover</h3>
-                    <p class="text-sm text-gray-400 leading-relaxed">Browse verified villas and homestays by location, dates, and group size.</p>
-                </div>
-                <div class="text-center space-y-4 group">
-                    <div class="w-16 h-16 bg-teal-500/20 rounded-2xl flex items-center justify-center mx-auto group-hover:bg-teal-500/30 transition">
-                        <i class="fa-solid fa-calendar-check text-teal-400 text-2xl"></i>
-                    </div>
-                    <div class="text-teal-400 text-xs font-black uppercase tracking-widest">Step 02</div>
-                    <h3 class="text-lg font-bold text-white">Book Directly</h3>
-                    <p class="text-sm text-gray-400 leading-relaxed">Choose your dates, customize your stay with add-ons, and confirm instantly.</p>
-                </div>
-                <div class="text-center space-y-4 group">
-                    <div class="w-16 h-16 bg-rose-500/20 rounded-2xl flex items-center justify-center mx-auto group-hover:bg-rose-500/30 transition">
-                        <i class="fa-solid fa-star text-rose-400 text-2xl"></i>
-                    </div>
-                    <div class="text-rose-400 text-xs font-black uppercase tracking-widest">Step 03</div>
-                    <h3 class="text-lg font-bold text-white">Experience & Review</h3>
-                    <p class="text-sm text-gray-400 leading-relaxed">Arrive to a curated, fully-staffed property and leave a genuine review.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===================== OUR STORY PILLARS ===================== -->
-    <section class="bg-[--brand-cream] py-20 px-4 md:px-8">
-        <div class="max-w-6xl mx-auto">
-            <div class="text-center mb-14">
-                <span class="text-amber-500 text-xs font-black uppercase tracking-widest">Our Mission</span>
-                <h2 class="text-3xl md:text-4xl font-black text-[--brand-navy] mt-3">Why Choose StellarStays?</h2>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="bg-white rounded-2xl p-6 space-y-3 border border-amber-100 shadow-sm hover:shadow-md transition">
-                    <div class="text-amber-500 text-3xl"><i class="fa-solid fa-lightbulb"></i></div>
-                    <h4 class="font-bold text-[--brand-navy]">Custom Solutions</h4>
-                    <p class="text-xs text-gray-500 leading-relaxed font-medium">No one-size-fits-all. Choose service levels that suit your lifestyle and trip style perfectly.</p>
-                </div>
-                <div class="bg-white rounded-2xl p-6 space-y-3 border border-teal-100 shadow-sm hover:shadow-md transition">
-                    <div class="text-teal-600 text-3xl"><i class="fa-solid fa-gear"></i></div>
-                    <h4 class="font-bold text-[--brand-navy]">Tech-Powered Ease</h4>
-                    <p class="text-xs text-gray-500 leading-relaxed font-medium">Advanced tools handle the hard work so you can focus on creating memorable experiences.</p>
-                </div>
-                <div class="bg-white rounded-2xl p-6 space-y-3 border border-rose-100 shadow-sm hover:shadow-md transition">
-                    <div class="text-rose-500 text-3xl"><i class="fa-solid fa-face-smile"></i></div>
-                    <h4 class="font-bold text-[--brand-navy]">Guest First Always</h4>
-                    <p class="text-xs text-gray-500 leading-relaxed font-medium">We prioritize happiness at every step. Your operational success is our reward.</p>
-                </div>
-                <div class="bg-white rounded-2xl p-6 space-y-3 border border-indigo-100 shadow-sm hover:shadow-md transition">
-                    <div class="text-indigo-600 text-3xl"><i class="fa-solid fa-users"></i></div>
-                    <h4 class="font-bold text-[--brand-navy]">Supportive Community</h4>
-                    <p class="text-xs text-gray-500 leading-relaxed font-medium">Connect with passionate owners who share your values and journey.</p>
-                </div>
-            </div>
-        </div>
-    </section>
 
     <!-- ===================== FAQ ===================== -->
     <section class="bg-white py-16 px-4 md:px-8 scroll-mt-[90px]" id="faq">
@@ -703,24 +668,39 @@
 
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            // Range date picker for hero search
-            flatpickr("#startDateInput", {
-                mode: "range",
-                minDate: "today",
-                dateFormat: "Y-m-d",
-                onChange: function(selectedDates) {
-                    if (selectedDates.length >= 1) {
-                        document.getElementById("startDateInput").value = selectedDates[0].toISOString().split('T')[0];
+            // Helper: init a range flatpickr and sync both mobile+desktop end fields
+            function initRangePicker(inputId, endId) {
+                flatpickr('#' + inputId, {
+                    mode: "range",
+                    minDate: "today",
+                    dateFormat: "Y-m-d",
+                    onChange: function(selectedDates) {
+                        if (selectedDates.length >= 1) {
+                            document.getElementById(inputId).value = selectedDates[0].toISOString().split('T')[0];
+                            // sync partner start field
+                            const partnerId = inputId === 'startDateInput' ? 'startDateInputDesktop' : 'startDateInput';
+                            if (document.getElementById(partnerId)) document.getElementById(partnerId).value = document.getElementById(inputId).value;
+                        }
+                        if (selectedDates.length === 2) {
+                            const endVal = selectedDates[1].toISOString().split('T')[0];
+                            document.getElementById(endId).value = endVal;
+                            // sync partner end field
+                            const partnerEndId = endId === 'endDateInput' ? 'endDateInputDesktop' : 'endDateInput';
+                            if (document.getElementById(partnerEndId)) document.getElementById(partnerEndId).value = endVal;
+                        } else {
+                            document.getElementById(endId).value = "";
+                        }
                     }
-                    if (selectedDates.length === 2) {
-                        document.getElementById("endDateInput").value = selectedDates[1].toISOString().split('T')[0];
-                    } else {
-                        document.getElementById("endDateInput").value = "";
-                    }
-                }
+                });
+            }
+            initRangePicker('startDateInput', 'endDateInput');
+            initRangePicker('startDateInputDesktop', 'endDateInputDesktop');
+
+            document.getElementById("triggerCheckOut")?.addEventListener("click", () => {
+                document.getElementById("startDateInput")._flatpickr?.open();
             });
-            document.getElementById("triggerCheckOut").addEventListener("click", () => {
-                document.getElementById("startDateInput")._flatpickr.open();
+            document.getElementById("triggerCheckOutDesktop")?.addEventListener("click", () => {
+                document.getElementById("startDateInputDesktop")._flatpickr?.open();
             });
         });
 
@@ -1075,16 +1055,25 @@
         );
     }
 
-    // ── Search
+    // ── Search — reads from whichever layout is active (mobile or desktop)
     function handleSearch() {
-        const text   = document.getElementById('searchLocation').value.toLowerCase().trim();
-        const guests = parseInt(document.getElementById('searchGuests').value) || 1;
+        const isMobile = window.innerWidth < 768;
+        const text   = (isMobile
+            ? document.getElementById('searchLocation')
+            : document.getElementById('searchLocationDesktop')
+        ).value.toLowerCase().trim();
+        const guests = parseInt((isMobile
+            ? document.getElementById('searchGuests')
+            : document.getElementById('searchGuestsDesktop')
+        ).value) || 1;
         const filtered = propertiesInventory.filter(p =>
             (!text || (p.location||'').toLowerCase().includes(text) || (p.name||'').toLowerCase().includes(text)) &&
             (p.guests || 0) >= guests
         );
         document.getElementById('gridTitle').innerText = text ? `Results for "${text}"` : 'Search Results';
         renderProperties(filtered);
+        // Scroll down to results
+        document.getElementById('destinations')?.scrollIntoView({ behavior: 'smooth' });
     }
 
     // ── Load from API
