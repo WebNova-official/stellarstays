@@ -855,7 +855,7 @@
                 const ai = PRIORITY.indexOf(a), bi = PRIORITY.indexOf(b);
                 return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
             });
-            const amenities = sortedAmenities.slice(0, 3);
+            const amenities = sortedAmenities.slice(0, 5);
 
             const price  = item.pricePerNight || 0;
             const rating = item.rating || 4.8;
@@ -952,7 +952,7 @@
 
                         <!-- Name + location, serif -->
                         <div>
-                            <h4 class="display font-bold text-[19px] leading-tight line-clamp-1 tracking-tight" style="color:#0f1f3d;">${item.name || 'Boutique Stay'}</h4>
+                            <h4 class="display font-bold text-[19px] leading-snug line-clamp-2 tracking-tight" style="color:#0f1f3d;">${item.name || 'Boutique Stay'}</h4>
                             <p class="text-gray-500 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 mt-1">
                                 <i class="fa-solid fa-location-dot" style="font-size:9px; color:#f59e0b;"></i>
                                 ${city}${region ? ', ' + region : ''}
