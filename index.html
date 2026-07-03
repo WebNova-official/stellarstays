@@ -44,22 +44,38 @@
         }
 
         /* Card hover */
-        .property-card { transition: transform 0.3s ease, box-shadow 0.3s ease; }
-        .property-card:hover { transform: translateY(-6px); box-shadow: 0 24px 60px rgba(15,31,61,0.16); }
-        .property-card:hover .card-img { transform: scale(1.07); }
-        .card-img { transition: transform 0.6s ease; }
+        .property-card {
+            transition: transform 0.35s cubic-bezier(.2,.8,.2,1), box-shadow 0.35s ease, border-color 0.35s ease;
+            position: relative;
+        }
+        .property-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 30px 70px -12px rgba(15,31,61,0.28), 0 0 0 1px rgba(245,158,11,0.18);
+        }
+        .property-card:hover .card-img { transform: scale(1.08); }
+        .card-img { transition: transform 0.7s cubic-bezier(.2,.8,.2,1); }
+
+        /* Thin gold accent line along the top edge, revealed on hover */
+        .property-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, #f59e0b, #fbbf24 50%, #f59e0b);
+            opacity: 0; transition: opacity 0.35s ease;
+            z-index: 40;
+        }
+        .property-card:hover::before { opacity: 1; }
 
         /* Gradient overlay on card image */
         .card-img-overlay {
-            background: linear-gradient(to top, rgba(10,20,50,0.92) 0%, rgba(10,20,50,0.55) 40%, transparent 100%);
+            background: linear-gradient(to top, rgba(8,16,38,0.94) 0%, rgba(10,20,50,0.5) 42%, transparent 100%);
         }
 
         /* Amenity chip */
         .amenity-chip {
             display: inline-flex; align-items: center; gap: 5px;
-            background: #f3f4f6; border-radius: 999px;
-            padding: 4px 10px; font-size: 10px; font-weight: 600; color: #4b5563;
-            white-space: nowrap;
+            background: #fbfaf7; border: 1px solid rgba(15,31,61,0.09); border-radius: 999px;
+            padding: 4px 11px; font-size: 10px; font-weight: 700; color: #374151;
+            white-space: nowrap; letter-spacing: 0.01em;
         }
 
         /* Price highlight */
@@ -525,8 +541,9 @@
         <div class="max-w-4xl mx-auto">
             <div class="text-center mb-10">
                 <span class="text-amber-500 text-xs font-black uppercase tracking-widest">Please Read</span>
-                <h2 class="text-3xl font-black text-[--brand-navy] mt-2">House Rules</h2>
+                <h2 class="text-3xl font-black text-[--brand-navy] mt-2">Common House Rules</h2>
                 <p class="text-gray-500 text-sm mt-2 max-w-2xl mx-auto">Tap a category to expand. A few things to know before you check in, so the stay is smooth for you and the guests after you.</p>
+                <p class="text-gray-400 text-xs mt-2 max-w-2xl mx-auto italic">These rules apply across all StellarStays villas. Individual properties may have a few additional rules, which will be shared at the time of booking.</p>
             </div>
             <div class="space-y-3" id="houseRulesContainer">
 
@@ -889,7 +906,7 @@
             const whatsappHref = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
             grid.innerHTML += `
-                <div onclick="goToBooking('${item._id}')" class="property-card bg-white rounded-2xl overflow-hidden flex flex-col cursor-pointer group" style="box-shadow:0 2px 20px rgba(15,31,61,0.08); border:1px solid rgba(15,31,61,0.06);">
+                <div onclick="goToBooking('${item._id}')" class="property-card bg-white rounded-3xl overflow-hidden flex flex-col cursor-pointer group" style="box-shadow:0 4px 24px rgba(15,31,61,0.10); border:1px solid rgba(15,31,61,0.07);">
 
                     <!-- ── IMAGE ZONE ── -->
                     <div class="relative overflow-hidden bg-gray-200 card-img-zone" data-card-id="${cardId}" data-count="${imgsArr.length}" style="aspect-ratio:16/15;">
@@ -915,20 +932,19 @@
 
                         <!-- Rating + title overlay -->
                         <div class="absolute bottom-0 left-0 right-0 z-20 px-4 pb-4">
-                            <div class="flex items-center justify-between mb-1">
-                                <span class="flex items-center gap-1.5 text-white text-[11px] font-bold"
-                                      style="text-shadow:0 1px 4px rgba(0,0,0,0.5);">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="flex items-center gap-1.5 text-white text-[11px] font-bold px-2 py-0.5 rounded-full" style="background:rgba(255,255,255,0.14); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,0.25);">
                                     <i class="fa-solid fa-star text-amber-400" style="font-size:10px;"></i>
                                     ${rating}/5
                                     <span class="font-normal text-white/75">${ratingLabel}</span>
                                 </span>
-                                <span class="flex items-center gap-1 text-white text-[10px] font-bold px-2 py-0.5 rounded-full" style="background:rgba(15,31,61,0.82); backdrop-filter:blur(6px);">
-                                    <i class="fa-solid fa-bolt text-amber-400" style="font-size:8px;"></i> Direct
+                                <span class="flex items-center gap-1 text-[--brand-navy] text-[10px] font-black px-2.5 py-0.5 rounded-full" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);">
+                                    <i class="fa-solid fa-bolt" style="font-size:8px;"></i> Direct
                                 </span>
                             </div>
-                            <h4 class="text-white font-bold text-[15px] leading-tight line-clamp-1" style="text-shadow:0 1px 6px rgba(0,0,0,0.6);">${item.name || 'Boutique Stay'}</h4>
-                            <p class="text-white/75 text-[11px] font-semibold flex items-center gap-1 mt-0.5">
-                                <i class="fa-solid fa-location-dot text-red-400" style="font-size:9px;"></i>
+                            <h4 class="display text-white font-bold text-[17px] leading-tight line-clamp-1 tracking-tight" style="text-shadow:0 1px 8px rgba(0,0,0,0.6);">${item.name || 'Boutique Stay'}</h4>
+                            <p class="text-white/80 text-[11px] font-semibold flex items-center gap-1 mt-1">
+                                <i class="fa-solid fa-location-dot text-amber-400" style="font-size:9px;"></i>
                                 ${city}${region ? ', ' + region : ''}
                             </p>
                         </div>
@@ -966,18 +982,18 @@
                         ${offerBadge ? `<div>${offerBadge}</div>` : ''}
 
                         <!-- Divider -->
-                        <div class="border-t border-gray-100 mt-auto"></div>
+                        <div class="mt-auto" style="height:1px; background:linear-gradient(90deg, transparent, rgba(15,31,61,0.12) 15%, rgba(15,31,61,0.12) 85%, transparent);"></div>
 
                         <!-- Price + CTA -->
                         <div class="flex items-center justify-between pt-0.5">
                             <div>
-                                <div class="flex items-baseline gap-0.5">
-                                    <span class="text-xl font-black" style="color:#0f1f3d;">₹${price.toLocaleString('en-IN')}</span>
-                                    <span class="text-[10px] text-gray-400 font-medium">/night</span>
+                                <span class="block text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Starting from</span>
+                                <div class="flex items-baseline gap-1">
+                                    <span class="display text-2xl font-black" style="color:#0f1f3d;">₹${price.toLocaleString('en-IN')}</span>
+                                    <span class="text-[10px] text-gray-400 font-medium">/night + GST</span>
                                 </div>
-                                <span class="text-[10px] text-gray-400">+ GST</span>
                             </div>
-                            <button class="flex items-center gap-1.5 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow hover:shadow-lg hover:scale-105 active:scale-95" style="background:#0f1f3d;">
+                            <button class="flex items-center gap-1.5 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md hover:shadow-xl hover:scale-105 active:scale-95" style="background:linear-gradient(135deg,#16264a,#0f1f3d); border:1px solid rgba(245,158,11,0.4);">
                                 View Details <i class="fa-solid fa-arrow-right" style="font-size:9px;"></i>
                             </button>
                         </div>
