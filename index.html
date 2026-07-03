@@ -894,7 +894,7 @@
             }).join('');
 
             const dots = imgsArr.length > 1
-                ? `<div class="carousel-dots absolute left-1/2 z-20" style="transform:translateX(-50%); top:12px;">
+                ? `<div class="carousel-dots absolute left-1/2 z-20" style="transform:translateX(-50%); bottom:12px;">
                     ${imgsArr.map((_, i) => `<span class="${i === 0 ? 'active' : ''}"></span>`).join('')}
                   </div>`
                 : '';
@@ -906,75 +906,82 @@
             const whatsappHref = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
             grid.innerHTML += `
-                <div onclick="goToBooking('${item._id}')" class="property-card bg-white rounded-3xl overflow-hidden flex flex-col cursor-pointer group" style="box-shadow:0 4px 24px rgba(15,31,61,0.10); border:1px solid rgba(15,31,61,0.07);">
+                <div onclick="goToBooking('${item._id}')" class="property-card bg-white rounded-[22px] overflow-hidden flex flex-col cursor-pointer group" style="box-shadow:0 4px 20px rgba(15,31,61,0.08); border:1px solid rgba(15,31,61,0.08);">
 
-                    <!-- ── IMAGE ZONE ── -->
-                    <div class="relative overflow-hidden bg-gray-200 card-img-zone" data-card-id="${cardId}" data-count="${imgsArr.length}" style="aspect-ratio:16/15;">
-                        <div class="card-img-stack">${imgStack}</div>
+                    <!-- ── IMAGE ZONE (matted like a framed photograph) ── -->
+                    <div class="p-2.5 pb-0">
+                        <div class="relative overflow-hidden bg-gray-200 card-img-zone rounded-[16px]" data-card-id="${cardId}" data-count="${imgsArr.length}" style="aspect-ratio:16/12;">
+                            <div class="card-img-stack">${imgStack}</div>
 
-                        <!-- Gradient overlay -->
-                        <div class="card-img-overlay absolute inset-0 z-10"></div>
+                            <!-- Subtle bottom-only gradient, just enough to seat the dots -->
+                            <div class="absolute inset-0 z-10" style="background:linear-gradient(to top, rgba(8,16,38,0.35) 0%, transparent 30%);"></div>
 
-                        <!-- Wishlist + Share — top right -->
-                        <div class="absolute top-3 right-3 z-30 flex flex-col gap-2">
-                            <button class="wishlist-btn" id="wish-${cardId}"
-                                    onclick="event.stopPropagation(); toggleWish('wish-${cardId}')">
-                                <i class="fa-solid fa-heart heart-icon"></i>
-                            </button>
-                            <a class="share-btn" href="${whatsappHref}" target="_blank" rel="noopener"
-                               onclick="event.stopPropagation();" title="Share on WhatsApp">
-                                <i class="fa-brands fa-whatsapp"></i>
-                            </a>
+                            <!-- Wishlist + Share — top right -->
+                            <div class="absolute top-3 right-3 z-30 flex flex-col gap-2">
+                                <button class="wishlist-btn" id="wish-${cardId}"
+                                        onclick="event.stopPropagation(); toggleWish('wish-${cardId}')">
+                                    <i class="fa-solid fa-heart heart-icon"></i>
+                                </button>
+                                <a class="share-btn" href="${whatsappHref}" target="_blank" rel="noopener"
+                                   onclick="event.stopPropagation();" title="Share on WhatsApp">
+                                    <i class="fa-brands fa-whatsapp"></i>
+                                </a>
+                            </div>
+
+                            <!-- Hot badge — top left -->
+                            ${item.hot ? `<span class="absolute top-3 left-3 z-20 text-white text-[10px] font-black px-2.5 py-1 rounded-full hot-badge" style="background:rgba(239,68,68,0.92); backdrop-filter:blur(6px);">🔥 Hot</span>` : ''}
+
+                            ${dots}
+                        </div>
+                    </div>
+
+                    <!-- ── CARD BODY ── -->
+                    <div class="px-5 pt-4 pb-5 flex-1 flex flex-col gap-3">
+
+                        <!-- Rating + Direct, off the photo -->
+                        <div class="flex items-center justify-between">
+                            <span class="flex items-center gap-1.5 text-[11px] font-bold" style="color:#b45309;">
+                                <i class="fa-solid fa-star" style="font-size:10px;"></i>
+                                ${rating}/5
+                                <span class="font-semibold text-gray-400">${ratingLabel}</span>
+                            </span>
+                            <span class="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider" style="color:#0f1f3d;">
+                                <i class="fa-solid fa-bolt" style="font-size:8px; color:#f59e0b;"></i> Direct
+                            </span>
                         </div>
 
-                        <!-- Hot badge — top left -->
-                        ${item.hot ? `<span class="absolute top-3 left-3 z-20 text-white text-[10px] font-black px-2.5 py-1 rounded-full hot-badge" style="background:rgba(239,68,68,0.92); backdrop-filter:blur(6px);">🔥 Hot</span>` : ''}
-
-                        <!-- Rating + title overlay -->
-                        <div class="absolute bottom-0 left-0 right-0 z-20 px-4 pb-4">
-                            <div class="flex items-center justify-between mb-1.5">
-                                <span class="flex items-center gap-1.5 text-white text-[11px] font-bold px-2 py-0.5 rounded-full" style="background:rgba(255,255,255,0.14); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,0.25);">
-                                    <i class="fa-solid fa-star text-amber-400" style="font-size:10px;"></i>
-                                    ${rating}/5
-                                    <span class="font-normal text-white/75">${ratingLabel}</span>
-                                </span>
-                                <span class="flex items-center gap-1 text-[--brand-navy] text-[10px] font-black px-2.5 py-0.5 rounded-full" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);">
-                                    <i class="fa-solid fa-bolt" style="font-size:8px;"></i> Direct
-                                </span>
-                            </div>
-                            <h4 class="display text-white font-bold text-[17px] leading-tight line-clamp-1 tracking-tight" style="text-shadow:0 1px 8px rgba(0,0,0,0.6);">${item.name || 'Boutique Stay'}</h4>
-                            <p class="text-white/80 text-[11px] font-semibold flex items-center gap-1 mt-1">
-                                <i class="fa-solid fa-location-dot text-amber-400" style="font-size:9px;"></i>
+                        <!-- Name + location, serif -->
+                        <div>
+                            <h4 class="display font-bold text-[19px] leading-tight line-clamp-1 tracking-tight" style="color:#0f1f3d;">${item.name || 'Boutique Stay'}</h4>
+                            <p class="text-gray-500 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 mt-1">
+                                <i class="fa-solid fa-location-dot" style="font-size:9px; color:#f59e0b;"></i>
                                 ${city}${region ? ', ' + region : ''}
                             </p>
                         </div>
 
-                        ${dots}
-                    </div>
+                        <!-- Gold hairline -->
+                        <div style="height:1px; background:linear-gradient(90deg, #f59e0b, rgba(245,158,11,0.15) 40%, transparent);"></div>
 
-                    <!-- ── CARD BODY ── -->
-                    <div class="p-4 flex-1 flex flex-col gap-3">
-
-                        <!-- Guests / BHK / Type -->
+                        <!-- Guests / BHK / Type — minimal, dot-separated -->
                         <div class="flex items-center gap-2 text-[11px] text-gray-500 font-semibold flex-wrap">
-                            <span class="flex items-center gap-1">
-                                <i class="fa-solid fa-users text-blue-300" style="font-size:9px;"></i> ${guestLabel}
+                            <span class="flex items-center gap-1.5">
+                                <i class="fa-solid fa-users" style="font-size:9px; color:#9ca3af;"></i> ${guestLabel}
                             </span>
-                            <span class="text-gray-200">•</span>
-                            <span class="flex items-center gap-1">
-                                <i class="fa-solid fa-bed text-purple-300" style="font-size:9px;"></i> ${item.bedrooms || 0} Bedrooms
+                            <span class="text-gray-300">·</span>
+                            <span class="flex items-center gap-1.5">
+                                <i class="fa-solid fa-bed" style="font-size:9px; color:#9ca3af;"></i> ${item.bedrooms || 0} Bedrooms
                             </span>
-                            <span class="text-gray-200">•</span>
-                            <span class="flex items-center gap-1">
-                                <i class="fa-solid fa-house text-green-300" style="font-size:9px;"></i> Entire Home
+                            <span class="text-gray-300">·</span>
+                            <span class="flex items-center gap-1.5">
+                                <i class="fa-solid fa-house" style="font-size:9px; color:#9ca3af;"></i> Entire Home
                             </span>
                         </div>
 
-                        <!-- Amenity chips -->
-                        <div class="flex flex-wrap gap-1.5">
+                        <!-- Amenities — quiet, icon-led, no chip fills -->
+                        <div class="flex flex-wrap gap-x-3 gap-y-1.5">
                             ${amenities.map(a => {
-                                const [icon, color] = amenityIcons[a] || ['fa-circle-check', '#6b7280'];
-                                return `<span class="amenity-chip"><i class="fa-solid ${icon}" style="color:${color}; font-size:10px;"></i>${a}</span>`;
+                                const [icon] = amenityIcons[a] || ['fa-circle-check', '#6b7280'];
+                                return `<span class="flex items-center gap-1.5 text-[10.5px] font-semibold text-gray-600"><i class="fa-solid ${icon}" style="color:#0f1f3d; font-size:10px;"></i>${a}</span>`;
                             }).join('')}
                         </div>
 
@@ -982,10 +989,10 @@
                         ${offerBadge ? `<div>${offerBadge}</div>` : ''}
 
                         <!-- Divider -->
-                        <div class="mt-auto" style="height:1px; background:linear-gradient(90deg, transparent, rgba(15,31,61,0.12) 15%, rgba(15,31,61,0.12) 85%, transparent);"></div>
+                        <div class="mt-auto" style="height:1px; background:rgba(15,31,61,0.08);"></div>
 
                         <!-- Price + CTA -->
-                        <div class="flex items-center justify-between pt-0.5">
+                        <div class="flex items-center justify-between pt-1">
                             <div>
                                 <span class="block text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Starting from</span>
                                 <div class="flex items-baseline gap-1">
@@ -993,7 +1000,7 @@
                                     <span class="text-[10px] text-gray-400 font-medium">/night + GST</span>
                                 </div>
                             </div>
-                            <button class="flex items-center gap-1.5 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md hover:shadow-xl hover:scale-105 active:scale-95" style="background:linear-gradient(135deg,#16264a,#0f1f3d); border:1px solid rgba(245,158,11,0.4);">
+                            <button class="flex items-center gap-1.5 text-[--brand-navy] text-xs font-bold px-4 py-2.5 rounded-xl transition-all group-hover:bg-[--brand-navy] group-hover:text-white" style="background:transparent; border:1.5px solid #0f1f3d;">
                                 View Details <i class="fa-solid fa-arrow-right" style="font-size:9px;"></i>
                             </button>
                         </div>
