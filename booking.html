@@ -963,8 +963,8 @@ function setAvailUI(status, pillLabel, badgeLabel, banner, data) {
 document.addEventListener('DOMContentLoaded', function() {
     var onDateChange = function(dates) {
         if (dates.length === 2) {
-            checkIn  = dates[0].toISOString().split('T')[0];
-            checkOut = dates[1].toISOString().split('T')[0];
+            checkIn  = toLocalYMD(dates[0]);
+            checkOut = toLocalYMD(dates[1]);
             updateStayflexiUrl();  // updates iframe src + availability banner
             calculateTotal();
             // Sync all date pickers
@@ -988,8 +988,8 @@ document.addEventListener('DOMContentLoaded', function() {
 function reinitDatePickers(blockedDates) {
     var onDateChange = function(dates) {
         if (dates.length === 2) {
-            checkIn  = dates[0].toISOString().split('T')[0];
-            checkOut = dates[1].toISOString().split('T')[0];
+            checkIn  = toLocalYMD(dates[0]);
+            checkOut = toLocalYMD(dates[1]);
             updateStayflexiUrl();
             calculateTotal();
             ['dateRangePicker','dateRangePickerSidebar','dateRangePickerSidebarCustom'].forEach(function(id) {
@@ -1017,6 +1017,17 @@ function getParam(name) {
         if (pair[0].toLowerCase() === lower) return pair[1];
     }
     return '';
+}
+
+// Local YYYY-MM-DD — NEVER use .toISOString() on a flatpickr date for this.
+// toISOString() converts to UTC first, which rolls IST midnight back to the
+// previous day (UTC+5:30 → subtracting the offset crosses the day boundary).
+// This keeps the date exactly as shown/selected in the calendar.
+function toLocalYMD(d) {
+    var yyyy = d.getFullYear();
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    return yyyy + '-' + mm + '-' + dd;
 }
 
 var villaData = null;
@@ -1269,15 +1280,21 @@ async function loadBookingPage() {
             if (sidebarSF)     sidebarSF.classList.remove('hidden');
             if (sidebarCustom) sidebarCustom.classList.add('hidden');
 
-            // Init SF date pickers
+            // Init SF date pickers — synced to each other so main panel and
+            // sidebar never show different dates (was the root cause of
+            // "No rooms available" showing against dates the guest didn't pick).
             var sfPickerCfg = {
                 mode: 'range', minDate: 'today', dateFormat: 'Y-m-d',
                 onChange: function(dates) {
                     if (dates.length === 2) {
-                        checkIn  = dates[0].toISOString().split('T')[0];
-                        checkOut = dates[1].toISOString().split('T')[0];
+                        checkIn  = toLocalYMD(dates[0]);
+                        checkOut = toLocalYMD(dates[1]);
                         updateAvailabilityBanner();
                         sfOnDatesChange(checkIn, checkOut);
+                        ['dateRangePickerSF', 'dateRangePickerSidebar'].forEach(function(id) {
+                            var el = document.getElementById(id);
+                            if (el && el._flatpickr) el._flatpickr.setDate([dates[0], dates[1]], false);
+                        });
                     }
                 }
             };
@@ -1342,10 +1359,14 @@ async function loadBookingPage() {
         if (sfHotelId) {
             var sfOnDateChange = function(dates) {
                 if (dates.length === 2) {
-                    checkIn  = dates[0].toISOString().split('T')[0];
-                    checkOut = dates[1].toISOString().split('T')[0];
+                    checkIn  = toLocalYMD(dates[0]);
+                    checkOut = toLocalYMD(dates[1]);
                     updateAvailabilityBanner();
                     sfOnDatesChange(checkIn, checkOut);
+                    ['dateRangePickerSF', 'dateRangePickerSidebar'].forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if (el && el._flatpickr) el._flatpickr.setDate([dates[0], dates[1]], false);
+                    });
                 }
             };
             var sfCfg = {
@@ -1446,6 +1467,7 @@ async function sfOnDatesChange(cin, cout) {
             return;
         }
         var html = '';
+        var minPrice = null;
         Object.values(data.roomTypeMap).forEach(function(room) {
             var combo = room.combos && room.combos[0];
             var avail = combo ? combo.availableRooms : 0;
@@ -1453,6 +1475,7 @@ async function sfOnDatesChange(cin, cout) {
             (combo && combo.rates || []).slice(0,3).forEach(function(rate) {
                 var priceKey = sfGuests.adults + (sfGuests.children ? '+' + sfGuests.children : '');
                 var price = (rate.priceMap && rate.priceMap[priceKey]) || rate.price || 0;
+                if (price && (minPrice === null || price < minPrice)) minPrice = price;
                 html += '<div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 hover:border-amber-400 transition">'
                     + '<div class="flex items-start justify-between mb-2">'
                     + '<div><div class="font-black text-[#0f1f3d] text-sm">' + (room.roomTypeName||'Room') + '</div>'
@@ -1469,6 +1492,18 @@ async function sfOnDatesChange(cin, cout) {
             });
         });
         document.getElementById('sfRoomList').innerHTML = html || '<div class="text-sm text-red-400 font-semibold text-center py-4">No available rooms for these dates.</div>';
+
+        // Reflect live SF rate in the sticky sidebar/mobile price instead of
+        // leaving it stuck on the stored Mongo pricePerNight.
+        if (minPrice !== null) {
+            var nights = Math.max(1, Math.round((new Date(coutFmt.split('-').reverse().join('-')) - new Date(cinFmt.split('-').reverse().join('-'))) / 86400000));
+            var perNight = Math.round(minPrice / nights);
+            var rateStr = '₹' + perNight.toLocaleString('en-IN');
+            var stickyEl = document.getElementById('stickyRatePrint');
+            var mobileEl = document.getElementById('mobileStickyRate');
+            if (stickyEl) stickyEl.textContent = rateStr;
+            if (mobileEl) mobileEl.textContent = rateStr;
+        }
     } catch(err) {
         document.getElementById('sfRoomList').innerHTML = '<div class="text-sm text-red-400 font-semibold text-center py-4">Error fetching rates: ' + err.message + '</div>';
     }
