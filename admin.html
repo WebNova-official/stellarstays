@@ -1084,8 +1084,12 @@ async function loadSfConfig() {
             if (dot) { dot.style.background = '#10b981'; }
             if (lbl) lbl.innerHTML = '<span class="w-2 h-2 rounded-full inline-block" style="background:#10b981"></span> Connected';
         } else {
-            if (dot) dot.style.background = '#f59e0b';
-            if (lbl) lbl.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Keys missing in .env';
+            if (dot) dot.style.background = '#ef4444';
+            var reason = cfg.sfError ? cfg.sfError : 'Keys missing in .env';
+            if (lbl) {
+                lbl.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Not connected';
+                lbl.title = reason; // hover to see the real reason (e.g. "Please specify the correct api key")
+            }
         }
     } catch(e) {
         var lbl = document.getElementById('sfEnvStatus');
