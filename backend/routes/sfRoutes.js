@@ -63,7 +63,7 @@ async function rawProxy(req, res) {
         const path = req.query.path;
         if (!path) return res.status(400).json({ message: "path query param required" });
         const url = "https://api.stayflexi.com" + path;
-        const headers = { "X-SF-API-KEY": process.env.SF_API_KEY || "" };
+        const headers = { "X-SF-API-KEY": (process.env.SF_API_KEY || "").trim() };
         if (req.method === "POST") headers["Content-Type"] = "application/json";
         const r = await fetch(url, {
             method: req.method,
