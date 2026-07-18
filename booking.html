@@ -1478,6 +1478,10 @@ async function sfOnDatesChange(cin, cout) {
         var html = '';
         var minPrice = null;
         Object.values(data.roomTypeMap).forEach(function(room) {
+            // Docs: roomTypeMap[id].hidden — "yes"/"no". Hidden rooms shouldn't be sold via BE.
+            if (room.hidden === 'yes') return;
+            // Docs: combos is an array (per-slot for 3-slot hotels); for NOON/single-slot
+            // hotels (slotType from hotelcontent) there's exactly one entry — combos[0].
             var combo = room.combos && room.combos[0];
             var avail = combo ? combo.availableRooms : 0;
             if (avail < 1) return;
@@ -1628,9 +1632,10 @@ async function executeSfBooking() {
         requestToBook: false, isAddOnPresent: true, posOrderList: [],
         isInsured: false, refundableBookingFee: 0,
         appliedPromocode: '', promoAmount: 0, bookingFees: 0,
-        isEnquiry: !isPayAtHotel,
-        isExternalPayment: false
+        isEnquiry: !isPayAtHotel
     };
+    // Docs: isExternalPayment only appears on the Pay Now (enquiry) payload.
+    if (!isPayAtHotel) payload.isExternalPayment = false;
 
     try {
         var res = await fetch(getApiBase() + '/sf/raw?path=' + encodeURIComponent('/core/api/v1/beservice/perform-booking'), {
