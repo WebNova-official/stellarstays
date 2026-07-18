@@ -31,11 +31,31 @@ mongoose.connect(process.env.MONGODB_URI)
     .catch(err => console.error("❌  MongoDB connection error:", err));
 
 // ── SF config route (reads from .env) ──
-app.get("/api/config", (req, res) => {
+// sfConfigured now does a real live check against Stayflexi instead of just
+// checking the env var is non-empty — a present-but-wrong key (exactly what
+// caused the 401s) used to still show "Connected".
+app.get("/api/config", async (req, res) => {
     res.set("Cache-Control", "no-store");          // never cache secrets
+    var sfConfigured = false;
+    var sfError = null;
+    if (process.env.SF_API_KEY && process.env.SF_GROUP_ID) {
+        try {
+            var r = await fetch("https://api.stayflexi.com/core/api/v1/beservice/grouphotels?groupId=" + process.env.SF_GROUP_ID, {
+                headers: { "X-SF-API-KEY": process.env.SF_API_KEY.trim() }
+            });
+            var data = await r.json().catch(function() { return {}; });
+            sfConfigured = r.ok && !data.code; // Stayflexi returns {code, message} on auth failure
+            if (!sfConfigured) sfError = data.message || ("HTTP " + r.status);
+        } catch (e) {
+            sfError = e.message;
+        }
+    } else {
+        sfError = "SF_API_KEY or SF_GROUP_ID not set";
+    }
     res.json({
         sfGroupId:    process.env.SF_GROUP_ID || "",
-        sfConfigured: !!(process.env.SF_API_KEY && process.env.SF_GROUP_ID),
+        sfConfigured: sfConfigured,
+        sfError:      sfError, // null when healthy — surface this in admin UI if you want the real reason
     });
 });
 
