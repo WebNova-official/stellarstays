@@ -881,6 +881,9 @@ function kpi(label, val) {
             <!-- Capacity & Pricing -->
             <div>
                 <div class="section-title">Capacity &amp; Pricing</div>
+                <div id="sfPriceImportWarning" class="hidden mb-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Couldn't fetch a live rate from Stayflexi — enter the nightly price manually.
+                </div>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div><label class="form-label">Guests *</label><input type="number" id="f_guests" class="form-input" min="1" placeholder="10"></div>
                     <div><label class="form-label">Bedrooms *</label><input type="number" id="f_bedrooms" class="form-input" min="1" placeholder="4"></div>
@@ -893,6 +896,7 @@ function kpi(label, val) {
                         <select id="f_pets" class="form-input"><option value="No">No</option><option value="Yes">Yes</option><option value="On Request">On Request</option></select>
                     </div>
                 </div>
+
             </div>
 
             <!-- Stayflexi Integration -->
@@ -1425,6 +1429,8 @@ function openPropertyModal(property) {
     editingPropertyId = property ? property._id : null;
     document.getElementById('modalTitle').textContent = property ? 'Edit Property' : 'Add Property';
     document.getElementById('savePropertyBtnLabel').textContent = property ? 'Update Property' : 'Save Property';
+    var priceWarningEl = document.getElementById('sfPriceImportWarning');
+    if (priceWarningEl) priceWarningEl.classList.add('hidden');
     galleryImages = [];
     renderGalleryThumbs();
     clearVideos();
@@ -1874,6 +1880,8 @@ async function importSfHotel(hotel) {
 
         // ── Price: hotelcontent doesn't include live rates — needs a real check-in/out window.
         // Fetch tomorrow → day-after as a representative rate.
+        var priceWarning = document.getElementById('sfPriceImportWarning');
+        if (priceWarning) priceWarning.classList.add('hidden');
         try {
             var d1 = new Date(); d1.setDate(d1.getDate() + 1);
             var d2 = new Date(); d2.setDate(d2.getDate() + 2);
@@ -1886,9 +1894,12 @@ async function importSfHotel(hotel) {
             var rate = avail.actualRate || avail.rate || 0;
             if (rate) {
                 document.getElementById('f_pricePerNight').value = Math.round(rate);
+            } else if (priceWarning) {
+                priceWarning.classList.remove('hidden');
             }
         } catch (e) {
             console.warn('Could not fetch live rate, leave price for manual entry:', e.message);
+            if (priceWarning) priceWarning.classList.remove('hidden');
         }
     } catch(e) {
         // Basic import without full content
