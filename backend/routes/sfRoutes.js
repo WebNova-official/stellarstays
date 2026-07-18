@@ -54,4 +54,30 @@ router.get("/booking-info", handle((req) => sf.getBookingInfo(req.query.bookingI
 // GET /api/sf/booking-cancellation?bookingId=
 router.get("/booking-cancellation", handle((req) => sf.cancelBooking(req.query.bookingId)));
 
+// ── Generic passthrough (used by admin.html's sfFetch helper) ──
+// Forwards any Stayflexi path+query server-side, key never touches browser.
+// GET  /api/sf/raw?path=/core/api/v1/beservice/grouphotels%3FgroupId%3D...
+// POST /api/sf/raw?path=/core/api/v1/beservice/perform-booking
+async function rawProxy(req, res) {
+    try {
+        const path = req.query.path;
+        if (!path) return res.status(400).json({ message: "path query param required" });
+        const url = "https://api.stayflexi.com" + path;
+        const headers = { "X-SF-API-KEY": process.env.SF_API_KEY || "" };
+        if (req.method === "POST") headers["Content-Type"] = "application/json";
+        const r = await fetch(url, {
+            method: req.method,
+            headers,
+            body: req.method === "POST" ? JSON.stringify(req.body) : undefined,
+        });
+        const data = await r.json().catch(() => ({}));
+        res.status(r.status).json(data);
+    } catch (err) {
+        console.error("[SF raw proxy] error:", err.message);
+        res.status(500).json({ message: err.message });
+    }
+}
+router.get("/raw", rawProxy);
+router.post("/raw", rawProxy);
+
 module.exports = router;
