@@ -1457,13 +1457,22 @@ async function sfOnDatesChange(cin, cout) {
     document.getElementById('sfRoomList').innerHTML = '<div class="text-sm text-gray-400 animate-pulse py-4 text-center">Fetching live rates…</div>';
 
     try {
-        var data = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotelId
+        var sfPath = '/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotelId
             + '&checkin=' + encodeURIComponent(cinDT)
             + '&checkout=' + encodeURIComponent(coutDT)
-            + '&discount=0');
+            + '&discount=0';
+        var data = await sfFetch(sfPath);
+
+        // TEMP DEBUG — remove once live rooms confirmed working.
+        console.log('[SF DEBUG] request path:', sfPath);
+        console.log('[SF DEBUG] raw response:', data);
 
         if (!data.roomTypeMap || !Object.keys(data.roomTypeMap).length) {
-            document.getElementById('sfRoomList').innerHTML = '<div class="text-sm text-red-400 font-semibold text-center py-4">No rooms available for these dates.</div>';
+            document.getElementById('sfRoomList').innerHTML =
+                '<div class="text-sm text-red-400 font-semibold text-center py-4">No rooms available for these dates.</div>'
+                + '<div style="font-family:monospace;font-size:10px;white-space:pre-wrap;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;margin-top:8px;max-height:260px;overflow:auto;color:#991b1b;">'
+                + '<strong>DEBUG — request:</strong>\n' + sfPath + '\n\n<strong>DEBUG — response:</strong>\n' + JSON.stringify(data, null, 2).replace(/</g,'&lt;')
+                + '</div>';
             return;
         }
         var html = '';
