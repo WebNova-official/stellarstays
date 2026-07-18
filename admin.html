@@ -57,6 +57,11 @@ async function loadDashboardSfBookings() {
         // Build hotel rows
         var rows = hotels.map(function(h, i) {
             var cal = hotelData[i].status === 'fulfilled' ? hotelData[i].value : null;
+            if (hotelData[i].status === 'rejected') {
+                console.warn('[SF DEBUG] hotelcalendar failed for hotel', h.hotelId, hotelData[i].reason);
+            } else if (!cal || !cal.aggregate) {
+                console.warn('[SF DEBUG] hotelcalendar returned no .aggregate for hotel', h.hotelId, '— raw response:', cal);
+            }
             var booked = 0, avail = 0;
             if (cal && cal.aggregate) {
                 var todayStr = formatYYYYMMDD(today);
