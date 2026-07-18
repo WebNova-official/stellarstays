@@ -6,7 +6,7 @@ const BASE_URL = "https://api.stayflexi.com";
 
 function authHeaders(extra = {}) {
     return {
-        "X-SF-API-KEY": process.env.SF_API_KEY || "",
+        "X-SF-API-KEY": (process.env.SF_API_KEY || "").trim(),
         ...extra,
     };
 }
