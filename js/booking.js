@@ -25,6 +25,20 @@ function getApiBase() {
 }
 
 // ==========================================
+// STAYFLEXI LIVE SYNC — only used when a property has
+// a Stayflexi Hotel ID set (activeVilla.stayflexi). Routes
+// through the backend proxy so the SF API key stays server-side.
+// ==========================================
+async function sfLiveFetch(path) {
+    const res = await fetch(`${getApiBase()}/sf/raw?path=` + encodeURIComponent(path));
+    if (!res.ok) throw new Error('SF API error ' + res.status);
+    return res.json();
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+function fmtSfDate(d) { return pad2(d.getDate()) + '-' + pad2(d.getMonth() + 1) + '-' + d.getFullYear(); }
+function fmtSfDateTime(d, time) { return fmtSfDate(d) + ' ' + time; }
+
+// ==========================================
 // INIT
 // ==========================================
 async function parseUrlAndPopulate() {
@@ -165,6 +179,36 @@ async function parseUrlAndPopulate() {
         disabledRanges.push(...activeVilla.blockedDates);
     }
 
+    // ── Live Stayflexi sync (only for SF-linked properties) ──
+    const sfHotelId = activeVilla.stayflexi;
+    if (sfHotelId) {
+        // Live max guests — overrides stored value if SF has current data
+        try {
+            const content = await sfLiveFetch('/core/api/v1/beservice/hotelcontent?hotelId=' + sfHotelId);
+            const rt = content.roomTypeList && content.roomTypeList[0];
+            const liveGuests = rt ? parseInt(rt.maxOccupants || rt.maxPossible || 0) : 0;
+            if (liveGuests) {
+                activeVilla.guests = liveGuests;
+                document.getElementById("detailVillaGuests").innerText = `Max ${liveGuests} Guests`;
+            }
+        } catch (e) {
+            console.warn('SF hotel content fetch failed, using stored guest count:', e.message);
+        }
+
+        // Live blocked dates from SF's real-time calendar (next 90 days)
+        try {
+            const today = new Date();
+            const future = new Date(); future.setDate(future.getDate() + 90);
+            const calendar = await sfLiveFetch('/core/api/v1/beservice/hotelcalendar/?hotelId=' + sfHotelId
+                + '&fromDate=' + fmtSfDate(today) + '&toDate=' + fmtSfDate(future));
+            const avail = (calendar.aggregate && calendar.aggregate.availableRoomCount) || [];
+            const sfBlocked = avail.filter(d => d.count === 0).map(d => d.date);
+            disabledRanges.push(...sfBlocked);
+        } catch (e) {
+            console.warn('SF calendar fetch failed, using stored blocked dates only:', e.message);
+        }
+    }
+
     // Date picker — booked ranges disabled
     calendarInstance = flatpickr("#dateRangePicker", {
         mode: "range",
@@ -206,6 +250,37 @@ function processStayDuration(dates) {
         selectedTotalNights = 0;
     }
     calculateTotal();
+
+    // Live price for the exact selected dates (SF-linked properties only)
+    if (dates.length === 2 && activeVilla && activeVilla.stayflexi) {
+        refreshLiveRate(dates[0], dates[1]);
+    }
+}
+
+// ==========================================
+// LIVE PRICE — fetches Stayflexi's real-time rate for the
+// exact selected check-in/check-out, replacing the stored rate.
+// ==========================================
+async function refreshLiveRate(checkInDate, checkOutDate) {
+    const baseLabel = document.getElementById("baseLabel");
+    const prevLabel = baseLabel ? baseLabel.innerText : '';
+    try {
+        if (baseLabel) baseLabel.innerText = 'Fetching live price…';
+        const avail = await sfLiveFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + activeVilla.stayflexi
+            + '&checkin=' + encodeURIComponent(fmtSfDateTime(checkInDate, '14:00:00'))
+            + '&checkout=' + encodeURIComponent(fmtSfDateTime(checkOutDate, '11:00:00'))
+            + '&discount=0');
+        const liveRate = avail.actualRate || avail.rate;
+        if (liveRate) {
+            activeVilla.pricePerNight = Math.round(liveRate);
+            document.getElementById("stickyRatePrint").innerText = `₹${activeVilla.pricePerNight.toLocaleString('en-IN')}`;
+        }
+    } catch (e) {
+        console.warn('Live rate fetch failed, using stored price:', e.message);
+        if (baseLabel) baseLabel.innerText = prevLabel;
+    } finally {
+        calculateTotal();
+    }
 }
 
 // ==========================================
