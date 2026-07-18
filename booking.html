@@ -1305,8 +1305,38 @@ async function loadBookingPage() {
 
         calculateTotal();
 
-        // ── Reinit date pickers with blocked dates from DB ──
-        reinitDatePickers(villaData.blockedDates || []);
+        // ── Live Stayflexi sync (only for SF-linked properties) ──
+        // Auto-fetch on load: max guests + real-time blocked dates.
+        // Any failure here silently falls back to stored Mongo values.
+        var sfLiveBlockedDates = [];
+        if (sfHotelId) {
+            try {
+                var content = await sfFetch('/core/api/v1/beservice/hotelcontent?hotelId=' + sfHotelId);
+                var rt = content.roomTypeList && content.roomTypeList[0];
+                var liveGuests = rt ? parseInt(rt.maxOccupants || rt.maxPossible || 0) : 0;
+                if (liveGuests) {
+                    villaData.guests = liveGuests;
+                    MAX_GUESTS = liveGuests;
+                    document.getElementById('detailVillaGuests').textContent = liveGuests;
+                }
+            } catch (e) {
+                console.warn('SF hotel content fetch failed, using stored guest count:', e.message);
+            }
+
+            try {
+                var today = new Date();
+                var future = new Date(); future.setDate(future.getDate() + 90);
+                var calendar = await sfFetch('/core/api/v1/beservice/hotelcalendar/?hotelId=' + sfHotelId
+                    + '&fromDate=' + fmtSfDate(today) + '&toDate=' + fmtSfDate(future));
+                var avail = (calendar.aggregate && calendar.aggregate.availableRoomCount) || [];
+                sfLiveBlockedDates = avail.filter(function(d) { return d.count === 0; }).map(function(d) { return d.date; });
+            } catch (e) {
+                console.warn('SF calendar fetch failed, using stored blocked dates only:', e.message);
+            }
+        }
+
+        // ── Reinit date pickers with blocked dates from DB + live SF blocked dates ──
+        reinitDatePickers((villaData.blockedDates || []).concat(sfLiveBlockedDates));
 
         // If SF property, also reinit SF pickers with blocked dates
         if (sfHotelId) {
@@ -1321,7 +1351,7 @@ async function loadBookingPage() {
             var sfCfg = {
                 mode: 'range', minDate: 'today', dateFormat: 'Y-m-d',
                 onChange: sfOnDateChange,
-                disable: (villaData.blockedDates || []).map(function(d) { return d; })
+                disable: (villaData.blockedDates || []).concat(sfLiveBlockedDates)
             };
             ['dateRangePickerSF','dateRangePickerSidebar'].forEach(function(id) {
                 var el = document.getElementById(id);
@@ -1341,16 +1371,13 @@ async function loadBookingPage() {
 // ── STAYFLEXI API INTEGRATION ──
 // ══════════════════════════════════════════════════
 
-var SF_API_KEY = '';
-// Load SF API key from server (secure — not localStorage)
-(async function() { try { var r = await fetch(getApiBase() + '/config'); if (r.ok) { var c = await r.json(); SF_API_KEY = c.sfApiKey || ''; } } catch(e) {} })();
 var sfSelectedRoom = null; // {roomTypeId, roomTypeName, ratePlanId, ratePlanName, price, checkin, checkout}
 var sfGuests = { adults: 2, children: 0 };
 
+// Routes through backend proxy (/api/sf/raw) — SF_API_KEY stays server-side,
+// never touches the browser. Path/query built same as before, just forwarded.
 function sfFetch(path) {
-    var headers = { 'Content-Type': 'application/json' };
-    if (SF_API_KEY) headers['X-SF-API-KEY'] = SF_API_KEY;
-    return fetch('https://api.stayflexi.com' + path, { headers }).then(function(r) {
+    return fetch(getApiBase() + '/sf/raw?path=' + encodeURIComponent(path)).then(function(r) {
         if (!r.ok) throw new Error('SF API ' + r.status);
         return r.json();
     });
@@ -1562,10 +1589,8 @@ async function executeSfBooking() {
     };
 
     try {
-        var headers = { 'Content-Type': 'application/json' };
-        if (SF_API_KEY) headers['X-SF-API-KEY'] = SF_API_KEY;
-        var res = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
-            method: 'POST', headers: headers, body: JSON.stringify(payload)
+        var res = await fetch(getApiBase() + '/sf/raw?path=' + encodeURIComponent('/core/api/v1/beservice/perform-booking'), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
         var data = await res.json();
         if (data.status) {
