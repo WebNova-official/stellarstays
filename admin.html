@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StellarStays — Admin Panel</title>
-    <script src="https://cdn.tailwindcss.com">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
 // ═══════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════
@@ -1068,7 +1069,7 @@ function getApiBase() {
 var API = getApiBase();
 
 // ── SF Config (from .env via /api/config) ──
-var SF_API_KEY = '';
+// Note: the raw API key is never sent to the browser — only a "configured" flag.
 var SF_GROUP_ID = '';
 
 async function loadSfConfig() {
@@ -1076,11 +1077,10 @@ async function loadSfConfig() {
         var res = await fetch(API + '/config');
         if (!res.ok) throw new Error('config fetch failed');
         var cfg = await res.json();
-        SF_API_KEY  = cfg.sfApiKey  || '';
         SF_GROUP_ID = cfg.sfGroupId || '';
         var dot = document.getElementById('sfStatusDot');
         var lbl = document.getElementById('sfEnvStatus');
-        if (SF_API_KEY && SF_GROUP_ID) {
+        if (cfg.sfConfigured) {
             if (dot) { dot.style.background = '#10b981'; }
             if (lbl) lbl.innerHTML = '<span class="w-2 h-2 rounded-full inline-block" style="background:#10b981"></span> Connected';
         } else {
@@ -1101,11 +1101,9 @@ document.addEventListener('DOMContentLoaded', function() {
     populateMonthSelector();
 });
 
-// ── SF API helper ──
+// ── SF API helper — routes through backend proxy, key stays server-side ──
 async function sfFetch(url) {
-    var headers = {};
-    if (SF_API_KEY) headers['X-SF-API-KEY'] = SF_API_KEY;
-    var res = await fetch('https://api.stayflexi.com' + url, { headers });
+    var res = await fetch(API + '/sf/raw?path=' + encodeURIComponent(url));
     if (!res.ok) throw new Error('SF API error ' + res.status);
     return res.json();
 }
@@ -2048,11 +2046,9 @@ async function createSfBooking() {
     resultEl.classList.remove('hidden');
 
     try {
-        var headers = { 'Content-Type': 'application/json' };
-        if (SF_API_KEY) headers['X-SF-API-KEY'] = SF_API_KEY;
-        var res = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
+        var res = await fetch(API + '/sf/raw?path=' + encodeURIComponent('/core/api/v1/beservice/perform-booking'), {
             method: 'POST',
-            headers: headers,
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
         var data = await res.json();
@@ -2120,8 +2116,7 @@ async function recordSfPayment() {
     resultEl.classList.remove('hidden');
 
     try {
-        // Note: this endpoint does NOT require X-SF-API-KEY per the docs
-        var res = await fetch('https://api.stayflexi.com/api/v2/payments/recordExternalPayment/', {
+        var res = await fetch(API + '/sf/raw?path=' + encodeURIComponent('/api/v2/payments/recordExternalPayment/'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
