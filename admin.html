@@ -1851,6 +1851,36 @@ async function importSfHotel(hotel) {
             setTags('amenity', Object.keys(content.hotelAmenities[0]));
         }
         document.getElementById('f_type').value = 'Hotel';
+
+        // ── Bedrooms: SF has no "bedrooms" concept (it's room-inventory based, not villa-based).
+        // Property names carry it e.g. "Tucson 3BHK with Pvt Pool" — extract the number.
+        var bhkMatch = /(\d+)\s*BHK/i.exec(content.propertyName || hotel.hotelName || '');
+        var bedrooms = bhkMatch ? parseInt(bhkMatch[1]) : 1;
+        document.getElementById('f_bedrooms').value = bedrooms;
+
+        // ── Guests: pull from first room type's max occupancy, fallback to 2x bedrooms.
+        var firstRoomType = content.roomTypeList && content.roomTypeList[0];
+        var guests = firstRoomType ? parseInt(firstRoomType.maxOccupants || firstRoomType.maxPossible || 0) : 0;
+        document.getElementById('f_guests').value = guests || (bedrooms * 2);
+
+        // ── Price: hotelcontent doesn't include live rates — needs a real check-in/out window.
+        // Fetch tomorrow → day-after as a representative rate.
+        try {
+            var d1 = new Date(); d1.setDate(d1.getDate() + 1);
+            var d2 = new Date(); d2.setDate(d2.getDate() + 2);
+            var pad = function(n) { return String(n).padStart(2, '0'); };
+            var fmt = function(d, time) { return pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear() + ' ' + time; };
+            var avail = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotel.hotelId
+                + '&checkin=' + encodeURIComponent(fmt(d1, '14:00:00'))
+                + '&checkout=' + encodeURIComponent(fmt(d2, '12:00:00'))
+                + '&discount=0');
+            var rate = avail.actualRate || avail.rate || 0;
+            if (rate) {
+                document.getElementById('f_pricePerNight').value = Math.round(rate);
+            }
+        } catch (e) {
+            console.warn('Could not fetch live rate, leave price for manual entry:', e.message);
+        }
     } catch(e) {
         // Basic import without full content
         openPropertyModal();
