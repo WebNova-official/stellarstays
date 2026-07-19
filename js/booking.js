@@ -270,7 +270,12 @@ async function refreshLiveRate(checkInDate, checkOutDate) {
             + '&checkin=' + encodeURIComponent(fmtSfDateTime(checkInDate, '14:00:00'))
             + '&checkout=' + encodeURIComponent(fmtSfDateTime(checkOutDate, '11:00:00'))
             + '&discount=0');
-        const liveRate = avail.actualRate || avail.rate;
+        let liveRate = 0;
+        if (avail.roomTypeMap) {
+            const firstRoom = Object.values(avail.roomTypeMap)[0];
+            const combo = firstRoom && firstRoom.combos && firstRoom.combos[0];
+            liveRate = (combo && combo.rates && combo.rates[0] && combo.rates[0].price) || 0;
+        }
         if (liveRate) {
             activeVilla.pricePerNight = Math.round(liveRate);
             document.getElementById("stickyRatePrint").innerText = `₹${activeVilla.pricePerNight.toLocaleString('en-IN')}`;
