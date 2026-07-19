@@ -1891,7 +1891,12 @@ async function importSfHotel(hotel) {
                 + '&checkin=' + encodeURIComponent(fmt(d1, '14:00:00'))
                 + '&checkout=' + encodeURIComponent(fmt(d2, '12:00:00'))
                 + '&discount=0');
-            var rate = avail.actualRate || avail.rate || 0;
+            var rate = 0;
+            if (avail.roomTypeMap) {
+                var firstRoom = Object.values(avail.roomTypeMap)[0];
+                var combo = firstRoom && firstRoom.combos && firstRoom.combos[0];
+                rate = (combo && combo.rates && combo.rates[0] && combo.rates[0].price) || 0;
+            }
             if (rate) {
                 document.getElementById('f_pricePerNight').value = Math.round(rate);
             } else if (priceWarning) {
