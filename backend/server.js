@@ -19,11 +19,22 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// ── Cache static assets 7 days ──
+// ── Static assets ──
+// HTML files (admin.html, index.html, etc.) are always revalidated so deploys
+// show up immediately — these change often and a stale admin.html/booking.js
+// after a deploy silently reintroduces already-fixed bugs.
+// Everything else (images, fonts, etc.) keeps a 7-day cache since those
+// rarely change and benefit from being cached hard.
 app.use(express.static(path.join(__dirname, ".."), {
-    maxAge: "7d",
     etag: true,
     lastModified: true,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".html") || filePath.endsWith(".js")) {
+            res.setHeader("Cache-Control", "no-cache");
+        } else {
+            res.setHeader("Cache-Control", "public, max-age=604800");
+        }
+    },
 }));
 
 mongoose.connect(process.env.MONGODB_URI)
