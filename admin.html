@@ -720,6 +720,40 @@ function kpi(label, val) {
                 <div id="cbResult" class="hidden mt-4"></div>
             </div>
 
+            <!-- ── Payment Link Panel ── -->
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
+                <div class="section-title">Get Stayflexi Payment Link</div>
+                <p class="text-xs text-gray-400 mb-4">For a "Pay Now" enquiry booking, generate a link the guest can open to pay directly through Stayflexi's own checkout (Razorpay). Stayflexi confirms the booking automatically once payment succeeds — you do not need to use "Record External Payment" for this.</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="space-y-3">
+                        <div>
+                            <label class="form-label">Hotel ID *</label>
+                            <input type="text" id="pl_hotelId" class="form-input" placeholder="24006">
+                        </div>
+                        <div>
+                            <label class="form-label">Booking ID *</label>
+                            <input type="text" id="pl_bookingId" class="form-input" placeholder="SFBOOKING_26823_12447">
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="form-label">Redirect URL (after successful payment)</label>
+                            <input type="text" id="pl_redirectUrl" class="form-input" placeholder="https://yoursite.com/booking-confirmed">
+                        </div>
+                        <div>
+                            <label class="form-label">Cancel URL (if guest cancels payment)</label>
+                            <input type="text" id="pl_cancelUrl" class="form-input" placeholder="https://yoursite.com/booking-cancelled">
+                        </div>
+                    </div>
+                </div>
+                <div class="pt-3">
+                    <button onclick="getSfPaymentLink()" class="btn-primary w-full flex items-center justify-center gap-2 py-2.5">
+                        <i class="fa-solid fa-link"></i> Generate Payment Link
+                    </button>
+                </div>
+                <div id="plResult" class="hidden mt-4"></div>
+            </div>
+
             <!-- ── Record Payment Panel ── -->
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
                 <div class="section-title">Record External Payment for Booking</div>
@@ -2143,13 +2177,63 @@ async function createSfBooking() {
                 + '<div><span class="font-bold">Booking ID:</span> <code class="bg-gray-100 px-2 py-0.5 rounded font-bold text-indigo-700">' + data.bookingId + '</code></div>'
                 + '<div><span class="font-bold">Status:</span> ' + (isPayAtHotel ? '✅ CONFIRMED (Pay at Hotel)' : '⏳ ENQUIRY — awaiting payment (30 min window)') + '</div>'
                 + (data.hotelImageUrl ? '<img src="' + data.hotelImageUrl + '" class="mt-2 rounded-lg h-20 object-cover">' : '')
-                + (isPayAtHotel ? '' : '<div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs font-semibold">Use the <strong>Record Payment</strong> panel below with Booking ID <strong>' + data.bookingId + '</strong> to confirm this booking.</div>')
+                + (isPayAtHotel ? '' : '<div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs font-semibold">This is an enquiry — the guest needs to pay to confirm it. Use the <strong>Get Stayflexi Payment Link</strong> panel below with Booking ID <strong>' + data.bookingId + '</strong> to generate a link for them to pay directly, or use <strong>Record External Payment</strong> if you already collected payment yourself.</div>')
                 + '</div></div>';
             // Pre-fill the record payment panel
             if (!isPayAtHotel) {
                 document.getElementById('rp_bookingId').value = data.bookingId;
                 document.getElementById('rp_hotelId').value = hotelId;
                 document.getElementById('rp_amount').value = amount;
+                document.getElementById('pl_bookingId').value = data.bookingId;
+                document.getElementById('pl_hotelId').value = hotelId;
+            }
+
+            // ── Save a local record so this booking shows up on the Dashboard / Bookings tab ──
+            // (Stayflexi only stores the booking on its own side; without this it's invisible
+            // anywhere in this app except by manually looking up the bookingId.)
+            try {
+                var matchingProperty = allProperties.find(function(p) { return p.stayflexi && p.stayflexi.trim() === hotelId; });
+                var parseCbDate = function(s) {
+                    // cb_checkin/checkout are "DD-MM-YYYY HH:MM:ss"
+                    var m = /^(\d{2})-(\d{2})-(\d{4})/.exec(s);
+                    return m ? new Date(m[3], m[2]-1, m[1]) : null;
+                };
+                var dIn = parseCbDate(checkin), dOut = parseCbDate(checkout);
+                var nights = (dIn && dOut) ? Math.max(1, Math.round((dOut - dIn) / 86400000)) : 1;
+
+                var localPayload = {
+                    bookingRef: data.bookingId,
+                    guestName: (firstName + ' ' + lastName).trim(),
+                    guestEmail: email,
+                    email: email,
+                    phone: phone,
+                    propertyName: matchingProperty ? matchingProperty.name : ('Hotel ' + hotelId),
+                    property: matchingProperty ? matchingProperty.name : ('Hotel ' + hotelId),
+                    checkIn: checkin,
+                    checkOut: checkout,
+                    nights: nights,
+                    totalAmount: amount,
+                    totalPrice: amount,
+                    amount: amount,
+                    status: isPayAtHotel ? 'confirmed' : 'pending',
+                    source: 'stayflexi',
+                    stayflexiBookingId: data.bookingId,
+                    stayflexiHotelId: hotelId,
+                    roomTypeId: roomTypeId,
+                    ratePlanId: ratePlanId
+                };
+                var localRes = await fetch(API + '/bookings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(localPayload)
+                });
+                if (!localRes.ok) {
+                    console.warn('[SF DEBUG] Booking succeeded on Stayflexi but failed to save locally — it will not show on the Dashboard/Bookings tab. HTTP', localRes.status);
+                    resultEl.innerHTML += '<div class="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">⚠️ Booking was created on Stayflexi, but could not be saved locally — it won\'t show on the Dashboard or Bookings tab yet.</div>';
+                }
+            } catch (localErr) {
+                console.warn('[SF DEBUG] Booking succeeded on Stayflexi but failed to save locally:', localErr.message);
+                resultEl.innerHTML += '<div class="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">⚠️ Booking was created on Stayflexi, but could not be saved locally — it won\'t show on the Dashboard or Bookings tab yet.</div>';
             }
         } else {
             resultEl.innerHTML = '<div class="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-semibold">❌ ' + (data.message || 'Booking failed. Check your inputs.') + '</div>';
@@ -2157,6 +2241,61 @@ async function createSfBooking() {
     } catch (err) {
         resultEl.innerHTML = '<div class="text-red-500 text-sm font-semibold">Error: ' + err.message + '</div>';
     }
+}
+
+// ══════════════════════════════════════
+// ── Get Stayflexi Payment Link ──
+// ══════════════════════════════════════
+function getSfPaymentLink() {
+    var hotelId    = document.getElementById('pl_hotelId').value.trim();
+    var bookingId  = document.getElementById('pl_bookingId').value.trim();
+    var redirectUrl = document.getElementById('pl_redirectUrl').value.trim();
+    var cancelUrl   = document.getElementById('pl_cancelUrl').value.trim();
+
+    if (!hotelId || !bookingId) {
+        alert('Hotel ID and Booking ID are required.');
+        return;
+    }
+    if (!redirectUrl || !cancelUrl) {
+        alert('Please fill in both the Redirect URL and Cancel URL — Stayflexi sends the guest there after payment succeeds or is cancelled.');
+        return;
+    }
+
+    // Per the Stayflexi docs, this is a plain GET-redirect URL (no API key needed) —
+    // opening it takes the guest straight to Stayflexi's hosted Razorpay checkout.
+    var link = 'https://bookingengine.stayflexi.com/redirect-payment-gateway/'
+        + encodeURIComponent(bookingId)
+        + '?hotel_id=' + encodeURIComponent(hotelId)
+        + '&redirect_url=' + encodeURIComponent(redirectUrl)
+        + '&cancel_url=' + encodeURIComponent(cancelUrl);
+
+    var resultEl = document.getElementById('plResult');
+    resultEl.classList.remove('hidden');
+    resultEl.innerHTML = '<div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4">'
+        + '<div class="text-xs font-bold text-gray-500 uppercase mb-2">Payment Link</div>'
+        + '<div class="flex items-center gap-2">'
+        + '<input type="text" readonly value="' + link.replace(/"/g, '&quot;') + '" id="plLinkInput" class="form-input text-xs flex-1" onclick="this.select()">'
+        + '<button onclick="copyPaymentLink()" class="btn-ghost text-xs py-2 px-3 shrink-0"><i class="fa-solid fa-copy"></i> Copy</button>'
+        + '<a href="' + link.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="btn-primary text-xs py-2 px-3 shrink-0"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>'
+        + '</div>'
+        + '<div class="text-xs text-gray-400 mt-2">Send this link to the guest. Once they complete payment on Stayflexi\'s checkout, the booking is confirmed automatically — no need to also use "Record External Payment".</div>'
+        + '</div>';
+}
+
+function copyPaymentLink() {
+    var input = document.getElementById('plLinkInput');
+    if (!input) return;
+    input.select();
+    navigator.clipboard.writeText(input.value).then(function() {
+        var btn = event.target.closest('button');
+        if (btn) {
+            var original = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+            setTimeout(function() { btn.innerHTML = original; }, 1500);
+        }
+    }).catch(function() {
+        alert('Could not copy automatically — the link is selected, use Ctrl+C / Cmd+C.');
+    });
 }
 
 // ══════════════════════════════════════
@@ -2206,10 +2345,41 @@ async function recordSfPayment() {
             body: JSON.stringify(payload)
         });
         var data = await res.json();
+
+        // ── Bug fix: this used to render a green "success" box regardless of what
+        // Stayflexi actually returned. Only treat it as success if the HTTP call
+        // succeeded AND the response doesn't look like an error. ──
+        var looksSuccessful = res.ok && !data.error && !(data.status === false);
+        if (!looksSuccessful) {
+            resultEl.innerHTML = '<div class="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-semibold">❌ ' + (data.message || data.error || ('Payment recording failed (HTTP ' + res.status + ')')) + '</div>';
+            return;
+        }
+
         resultEl.innerHTML = '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-emerald-700 text-sm font-semibold">'
             + '✅ ' + (data.message || 'Payment recorded successfully!')
             + (confirm ? '<div class="text-xs mt-1 font-medium text-emerald-600">Booking has been confirmed.</div>' : '')
             + '</div>';
+
+        // ── Update the local booking record so it flips to "confirmed" on the
+        // Dashboard / Bookings tab once payment is actually recorded. ──
+        if (confirm) {
+            try {
+                var localRes = await fetch(API + '/bookings/by-ref/' + encodeURIComponent(bookingId) + '/status', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'confirmed' })
+                });
+                if (!localRes.ok) {
+                    console.warn('[SF DEBUG] Payment recorded on Stayflexi but local booking status update failed. HTTP', localRes.status);
+                    resultEl.innerHTML += '<div class="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">⚠️ Payment recorded on Stayflexi, but the local booking status could not be updated — it may still show as "pending" on the Dashboard/Bookings tab.</div>';
+                } else {
+                    loadDashboardCustomBookings();
+                }
+            } catch (localErr) {
+                console.warn('[SF DEBUG] Payment recorded on Stayflexi but local booking status update failed:', localErr.message);
+                resultEl.innerHTML += '<div class="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">⚠️ Payment recorded on Stayflexi, but the local booking status could not be updated — it may still show as "pending" on the Dashboard/Bookings tab.</div>';
+            }
+        }
     } catch (err) {
         resultEl.innerHTML = '<div class="text-red-500 text-sm font-semibold">Error: ' + err.message + '</div>';
     }
