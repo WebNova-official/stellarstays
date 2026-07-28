@@ -1882,28 +1882,57 @@ async function importSfHotel(hotel) {
         // Fetch tomorrow → day-after as a representative rate.
         var priceWarning = document.getElementById('sfPriceImportWarning');
         if (priceWarning) priceWarning.classList.add('hidden');
+        var pad = function(n) { return String(n).padStart(2, '0'); };
+        var fmt = function(d, time) { return pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear() + ' ' + time; };
+        var extractRate = function(avail) {
+            if (!avail || !avail.roomTypeMap) return 0;
+            var firstRoom = Object.values(avail.roomTypeMap)[0];
+            var combo = firstRoom && firstRoom.combos && firstRoom.combos[0];
+            return (combo && combo.rates && combo.rates[0] && combo.rates[0].price) || 0;
+        };
+        // Find the next weekday night (Tue checkin) and the next Saturday night,
+        // so the weekday/weekend rates we pull are actually representative.
+        var nextDow = function(fromDate, targetDow) {
+            var d = new Date(fromDate);
+            var diff = (targetDow - d.getDay() + 7) % 7;
+            d.setDate(d.getDate() + (diff === 0 ? 7 : diff));
+            return d;
+        };
+        var today = new Date();
+        var weekdayIn = nextDow(today, 2); // next Tuesday, safely mid-week
+        var weekdayOut = new Date(weekdayIn); weekdayOut.setDate(weekdayOut.getDate() + 1);
+        var weekendIn = nextDow(today, 6); // next Saturday
+        var weekendOut = new Date(weekendIn); weekendOut.setDate(weekendOut.getDate() + 1);
+
         try {
-            var d1 = new Date(); d1.setDate(d1.getDate() + 1);
-            var d2 = new Date(); d2.setDate(d2.getDate() + 2);
-            var pad = function(n) { return String(n).padStart(2, '0'); };
-            var fmt = function(d, time) { return pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear() + ' ' + time; };
-            var avail = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotel.hotelId
-                + '&checkin=' + encodeURIComponent(fmt(d1, '14:00:00'))
-                + '&checkout=' + encodeURIComponent(fmt(d2, '12:00:00'))
+            var weekdayAvail = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotel.hotelId
+                + '&checkin=' + encodeURIComponent(fmt(weekdayIn, '14:00:00'))
+                + '&checkout=' + encodeURIComponent(fmt(weekdayOut, '12:00:00'))
                 + '&discount=0');
-            var rate = 0;
-            if (avail.roomTypeMap) {
-                var firstRoom = Object.values(avail.roomTypeMap)[0];
-                var combo = firstRoom && firstRoom.combos && firstRoom.combos[0];
-                rate = (combo && combo.rates && combo.rates[0] && combo.rates[0].price) || 0;
-            }
-            if (rate) {
-                document.getElementById('f_pricePerNight').value = Math.round(rate);
+            var weekdayRate = extractRate(weekdayAvail);
+            if (weekdayRate) {
+                document.getElementById('f_pricePerNight').value = Math.round(weekdayRate);
             } else if (priceWarning) {
                 priceWarning.classList.remove('hidden');
             }
         } catch (e) {
-            console.warn('Could not fetch live rate, leave price for manual entry:', e.message);
+            console.warn('Could not fetch live weekday rate, leave price for manual entry:', e.message);
+            if (priceWarning) priceWarning.classList.remove('hidden');
+        }
+
+        try {
+            var weekendAvail = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotel.hotelId
+                + '&checkin=' + encodeURIComponent(fmt(weekendIn, '14:00:00'))
+                + '&checkout=' + encodeURIComponent(fmt(weekendOut, '12:00:00'))
+                + '&discount=0');
+            var weekendRate = extractRate(weekendAvail);
+            if (weekendRate) {
+                document.getElementById('f_weekendRate').value = Math.round(weekendRate);
+            } else if (priceWarning) {
+                priceWarning.classList.remove('hidden');
+            }
+        } catch (e) {
+            console.warn('Could not fetch live weekend rate, leave weekend price for manual entry:', e.message);
             if (priceWarning) priceWarning.classList.remove('hidden');
         }
     } catch(e) {
