@@ -967,8 +967,11 @@ document.addEventListener('DOMContentLoaded', function() {
             checkOut = toLocalYMD(dates[1]);
             updateStayflexiUrl();  // updates iframe src + availability banner
             calculateTotal();
-            // Sync all date pickers
-            ['dateRangePicker', 'dateRangePickerSidebar', 'dateRangePickerSidebarCustom'].forEach(function(id) {
+            // Sync the generic (non-Stayflexi) pickers only.
+            // NOTE: dateRangePickerSidebar belongs to the Stayflexi sidebar variant —
+            // it is initialized and synced separately below, never here. Touching it
+            // from both systems was causing duplicate/stacked flatpickr calendars.
+            ['dateRangePicker', 'dateRangePickerSidebarCustom'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el && el._flatpickr) el._flatpickr.setDate([dates[0], dates[1]], false);
             });
@@ -980,11 +983,11 @@ document.addEventListener('DOMContentLoaded', function() {
     var cfg = { mode: 'range', minDate: 'today', dateFormat: 'Y-m-d', onChange: onDateChange };
     // Will be reinitialised with blockedDates once property loads (see reinitDatePickers)
     flatpickr('#dateRangePicker', cfg);
-    flatpickr('#dateRangePickerSidebar', cfg);
     flatpickr('#dateRangePickerSidebarCustom', cfg);
 });
 
-// Call after villaData loads — rebuilds all pickers with blocked dates disabled
+// Call after villaData loads — rebuilds the generic (non-Stayflexi) pickers with blocked dates disabled.
+// dateRangePickerSF / dateRangePickerSidebar (Stayflexi) are handled separately in loadBookingPage.
 function reinitDatePickers(blockedDates) {
     var onDateChange = function(dates) {
         if (dates.length === 2) {
@@ -992,7 +995,7 @@ function reinitDatePickers(blockedDates) {
             checkOut = toLocalYMD(dates[1]);
             updateStayflexiUrl();
             calculateTotal();
-            ['dateRangePicker','dateRangePickerSidebar','dateRangePickerSidebarCustom'].forEach(function(id) {
+            ['dateRangePicker','dateRangePickerSidebarCustom'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el && el._flatpickr) el._flatpickr.setDate([dates[0], dates[1]], false);
             });
@@ -1003,7 +1006,7 @@ function reinitDatePickers(blockedDates) {
         onChange: onDateChange,
         disable: (blockedDates || []).map(function(d) { return d; })
     };
-    ['dateRangePicker','dateRangePickerSidebar','dateRangePickerSidebarCustom'].forEach(function(id) {
+    ['dateRangePicker','dateRangePickerSidebarCustom'].forEach(function(id) {
         var el = document.getElementById(id);
         if (!el) return;
         if (el._flatpickr) el._flatpickr.destroy();
@@ -1133,7 +1136,7 @@ async function loadBookingPage() {
     if (urlCheckIn && urlCheckOut) {
         checkIn = urlCheckIn; checkOut = urlCheckOut;
         setTimeout(function() {
-            ['dateRangePicker','dateRangePickerSidebar','dateRangePickerSidebarCustom'].forEach(function(id) {
+            ['dateRangePicker','dateRangePickerSidebarCustom'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el && el._flatpickr) el._flatpickr.setDate([urlCheckIn, urlCheckOut]);
             });
@@ -1300,10 +1303,19 @@ async function loadBookingPage() {
             };
             ['dateRangePickerSF','dateRangePickerSidebar'].forEach(function(id) {
                 var el = document.getElementById(id);
-                if (el) flatpickr(el, sfPickerCfg);
+                if (!el) return;
+                if (el._flatpickr) el._flatpickr.destroy(); // guard against double-init (was causing stacked calendars)
+                flatpickr(el, sfPickerCfg);
             });
-            // Pre-fill if URL had dates
-            if (checkIn && checkOut) sfOnDatesChange(checkIn, checkOut);
+            // Pre-fill if URL had dates — set both the internal state (for availability
+            // lookups) and the visible picker value (so the boxes actually show the dates).
+            if (checkIn && checkOut) {
+                sfOnDatesChange(checkIn, checkOut);
+                ['dateRangePickerSF','dateRangePickerSidebar'].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el && el._flatpickr) el._flatpickr.setDate([checkIn, checkOut], false);
+                });
+            }
 
             // Mobile bar
             var mobileBar = document.querySelector('.mobile-book-bar button');
