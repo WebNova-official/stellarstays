@@ -720,11 +720,11 @@
                         <span>💳 Pay Now</span>
                     </label>
                 </div>
-                <p id="sfPayNowNote" class="hidden text-[10px] text-amber-700 font-semibold mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Booking held for 30 mins as enquiry. Payment link sent separately.</p>
+                <p id="sfPayNowNote" class="hidden text-[10px] text-amber-700 font-semibold mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">You'll be redirected to Stayflexi's secure payment page to pay now. Your booking is held for 30 minutes as an enquiry until payment completes.</p>
             </div>
 
             <button onclick="executeSfBooking()" id="sfBookSubmitBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                <i class="fa-solid fa-lock text-xs"></i> Confirm Booking
+                <i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">Confirm Booking</span>
             </button>
             <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-shield-halved text-emerald-400"></i>
@@ -1577,7 +1577,10 @@ function changeSfGuests(type, delta) {
 
 document.addEventListener('change', function(e) {
     if (e.target && e.target.name === 'sfPayType') {
-        document.getElementById('sfPayNowNote').classList.toggle('hidden', e.target.value !== 'pay_now');
+        var isPayNow = e.target.value === 'pay_now';
+        document.getElementById('sfPayNowNote').classList.toggle('hidden', !isPayNow);
+        var label = document.getElementById('sfBookSubmitBtnLabel');
+        if (label) label.textContent = isPayNow ? 'Confirm & Pay Now' : 'Confirm Booking';
     }
 });
 
@@ -1642,20 +1645,65 @@ async function executeSfBooking() {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
         var data = await res.json();
-        if (data.status) {
+        if (!data.status) throw new Error(data.message || 'Booking failed');
+
+        var nights = Math.max(1, Math.round((new Date(sfSelectedRoom.checkout) - new Date(sfSelectedRoom.checkin)) / 86400000)) || 1;
+
+        // ── Save a local record so this booking shows up on the Admin Dashboard / Bookings tab. ──
+        // (Stayflexi only stores the booking on its own side; without this it's invisible
+        // anywhere in the admin panel except by manually looking up the bookingId.)
+        try {
+            await fetch(getApiBase() + '/bookings', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    property: villaData._id, propertyName: villaData.name,
+                    guestName: (firstName + ' ' + lastName).trim(), guestEmail: email, guestPhone: phone,
+                    guestCity: city, guestState: state, specialRequests: '',
+                    checkIn: sfSelectedRoom.checkin, checkOut: sfSelectedRoom.checkout, nights: nights,
+                    adults: sfGuests.adults, children: sfGuests.children, infants: 0,
+                    pricePerNight: villaData.pricePerNight || 0,
+                    baseAmount: sfSelectedRoom.price, addonAmount: 0, taxAmount: 0,
+                    totalAmount: sfSelectedRoom.price,
+                    status: isPayAtHotel ? 'confirmed' : 'pending',
+                    source: 'stayflexi', stayflexiBookingId: data.bookingId, stayflexiHotelId: hotelId,
+                    roomTypeId: sfSelectedRoom.roomTypeId, ratePlanId: sfSelectedRoom.ratePlanId
+                })
+            });
+        } catch (localErr) {
+            // Don't block the guest's booking/payment on this — just log it. The booking is
+            // already confirmed/enquired on Stayflexi regardless of whether this local save works.
+            console.warn('[SF DEBUG] Booking succeeded on Stayflexi but failed to save locally — it will not show on the Admin Dashboard yet.', localErr.message);
+        }
+
+        if (isPayAtHotel) {
+            // Already confirmed — no payment collection needed right now.
             closeSfBookingModal();
-            // Redirect to SF confirmation
             window.location.href = 'confirmation.html?sfBookingId=' + encodeURIComponent(data.bookingId)
                 + '&property=' + encodeURIComponent(villaData.name)
                 + '&total=' + sfSelectedRoom.price
-                + '&status=' + (isPayAtHotel ? 'confirmed' : 'enquiry');
+                + '&status=confirmed';
         } else {
-            throw new Error(data.message || 'Booking failed');
+            // Pay Now — this is a 30-min enquiry. Send the guest straight to Stayflexi's own
+            // hosted payment gateway (Razorpay) to actually collect payment and auto-confirm.
+            var thisPageUrl = window.location.origin + window.location.pathname;
+            var successUrl = window.location.origin + '/confirmation.html?sfBookingId=' + encodeURIComponent(data.bookingId)
+                + '&property=' + encodeURIComponent(villaData.name)
+                + '&total=' + sfSelectedRoom.price
+                + '&status=confirmed';
+            var cancelUrl = thisPageUrl + window.location.search; // back to this same booking page
+
+            var paymentLink = 'https://bookingengine.stayflexi.com/redirect-payment-gateway/'
+                + encodeURIComponent(data.bookingId)
+                + '?hotel_id=' + encodeURIComponent(hotelId)
+                + '&redirect_url=' + encodeURIComponent(successUrl)
+                + '&cancel_url=' + encodeURIComponent(cancelUrl);
+
+            window.location.href = paymentLink;
         }
     } catch(err) {
         alert('Booking failed: ' + err.message);
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> Confirm Booking';
+        btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">' + (isPayAtHotel ? 'Confirm Booking' : 'Confirm & Pay Now') + '</span>';
     }
 }
 
