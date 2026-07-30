@@ -281,48 +281,11 @@
                             <div class="text-xs text-gray-400 mt-0.5">Pick your check-in and check-out dates to see real-time rates.</div>
                         </div>
                     </div>
-                    <!-- STAYFLEXI API BOOKING: shown when property.stayflexi is set -->
-                    <div id="stayflexiSection" class="hidden space-y-4">
-
-                        <!-- Check-in / check-out times (dates are picked in the sidebar — single source of truth) -->
-                        <div id="sfTimesBar" class="hidden grid grid-cols-2 gap-2 text-[11px]">
-                            <div class="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
-                                <span class="font-bold text-blue-500 uppercase tracking-widest text-[9px]">Check-in</span>
-                                <div id="sfCheckinTime" class="font-black text-blue-700 mt-0.5">—</div>
-                            </div>
-                            <div class="bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
-                                <span class="font-bold text-emerald-500 uppercase tracking-widest text-[9px]">Check-out</span>
-                                <div id="sfCheckoutTime" class="font-black text-emerald-700 mt-0.5">—</div>
-                            </div>
-                        </div>
-
-                        <!-- Room availability cards -->
-                        <div id="sfRoomCards" class="hidden space-y-3">
-                            <h3 class="text-sm font-black text-[#0f1f3d]">Available Rooms</h3>
-                            <div id="sfRoomList" class="space-y-3"></div>
-                        </div>
-
-                        <!-- Selected room summary -->
-                        <div id="sfSelectedRoom" class="hidden bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
-                            <div class="flex items-start justify-between">
-                                <div>
-                                    <div class="text-xs font-bold text-amber-700 uppercase tracking-widest mb-1">Selected Room</div>
-                                    <div id="sfSelRoomName" class="font-black text-[#0f1f3d] text-sm"></div>
-                                    <div id="sfSelRatePlan" class="text-xs text-gray-500 mt-0.5"></div>
-                                </div>
-                                <button onclick="clearSfSelection()" class="text-xs text-gray-400 hover:text-red-500 transition font-semibold">Change</button>
-                            </div>
-                            <div class="flex justify-between text-sm font-extrabold text-[#0f1f3d] pt-2 border-t border-amber-200">
-                                <span>Total</span>
-                                <span id="sfSelTotal" class="text-emerald-600"></span>
-                            </div>
-                        </div>
-
-                        <!-- SF Booking CTA (goes to modal) -->
-                        <button id="sfBookCta" onclick="openSfBookingModal()" class="hidden w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                            <i class="fa-solid fa-lock text-xs"></i> Book Now
-                        </button>
-
+                    <p class="text-xs text-gray-400 font-medium flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrow-down text-amber-400"></i>
+                        Use the booking panel below to pick dates, choose a room, and pay.
+                    </p>
+                </div>
                         <p class="text-[11px] text-gray-400 font-medium flex items-center gap-1.5">
                             <i class="fa-solid fa-bolt text-amber-400"></i>
                             Live rates &amp; instant confirmation.
@@ -510,28 +473,18 @@
                 </div>
             </div>
 
-            <!-- Payment type -->
-            <div>
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Payment Option</label>
-                <div class="grid grid-cols-2 gap-2">
-                    <label class="flex items-center gap-2 p-3 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer hover:border-amber-400 transition text-xs font-bold text-gray-700">
-                        <input type="radio" name="sfPayType" value="pay_at_hotel" id="sfPayHotel" class="accent-amber-500" checked>
-                        <span>🏨 Pay at Hotel</span>
-                    </label>
-                    <label class="flex items-center gap-2 p-3 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer hover:border-amber-400 transition text-xs font-bold text-gray-700">
-                        <input type="radio" name="sfPayType" value="pay_now" id="sfPayNow" class="accent-amber-500">
-                        <span>💳 Pay Now</span>
-                    </label>
-                </div>
-                <p id="sfPayNowNote" class="hidden text-[10px] text-amber-700 font-semibold mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">You'll be redirected to our secure payment page to pay now. Your booking is held for 30 minutes as an enquiry until payment completes.</p>
+            <!-- Payment — Razorpay only, no pay-at-hotel option -->
+            <div class="bg-[#fdf8f0] border border-amber-100 rounded-xl p-3 flex items-start gap-2.5">
+                <i class="fa-solid fa-shield-halved text-amber-500 mt-0.5"></i>
+                <p class="text-[11px] text-amber-800 font-semibold leading-relaxed">Secure payment via Razorpay. You'll be redirected to complete payment — your booking is confirmed instantly once payment succeeds.</p>
             </div>
 
             <button onclick="executeSfBooking()" id="sfBookSubmitBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                <i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">Confirm Booking</span>
+                <i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">Confirm &amp; Pay via Razorpay</span>
             </button>
             <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-                Secure payment · Instant confirmation
+                Secure payment via Razorpay · Instant confirmation
             </p>
         </div>
     </div>
@@ -1212,15 +1165,6 @@ function changeSfGuests(type, delta) {
     document.getElementById('sfChildrenCount').textContent = sfGuests.children;
 }
 
-document.addEventListener('change', function(e) {
-    if (e.target && e.target.name === 'sfPayType') {
-        var isPayNow = e.target.value === 'pay_now';
-        document.getElementById('sfPayNowNote').classList.toggle('hidden', !isPayNow);
-        var label = document.getElementById('sfBookSubmitBtnLabel');
-        if (label) label.textContent = isPayNow ? 'Confirm & Pay Now' : 'Confirm Booking';
-    }
-});
-
 async function executeSfBooking() {
     if (!sfSelectedRoom) { alert('Please select a room first.'); return; }
     var firstName = document.getElementById('sfGuestFirst')?.value.trim();
@@ -1234,14 +1178,15 @@ async function executeSfBooking() {
     var country   = document.getElementById('sfGuestCountry')?.value.trim() || 'India';
     if (!firstName || !email || !phone) { alert('Please fill in your name, email, and phone.'); return; }
 
-    var payType = document.querySelector('input[name="sfPayType"]:checked')?.value || 'pay_at_hotel';
-    var isPayAtHotel = payType === 'pay_at_hotel';
     var hotelId = villaData.stayflexi.trim();
 
     var btn = document.getElementById('sfBookSubmitBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Confirming…';
 
+    // Every booking goes through Razorpay — there is no pay-at-hotel path anymore.
+    // Docs: this is created as an "enquiry" (isEnquiry: true) which Stayflexi
+    // auto-confirms once the guest completes payment on the Razorpay redirect below.
     var payload = {
         checkin: sfSelectedRoom.checkin,
         checkout: sfSelectedRoom.checkout,
@@ -1266,16 +1211,14 @@ async function executeSfBooking() {
         paymentDetails: {
             sellRate: sfSelectedRoom.price,
             roomRate: sfSelectedRoom.price,
-            payAtHotel: isPayAtHotel
+            payAtHotel: false
         },
         promoInfo: {}, specialRequests: '',
         requestToBook: false, isAddOnPresent: true, posOrderList: [],
         isInsured: false, refundableBookingFee: 0,
         appliedPromocode: '', promoAmount: 0, bookingFees: 0,
-        isEnquiry: !isPayAtHotel
+        isEnquiry: true, isExternalPayment: false
     };
-    // Docs: isExternalPayment only appears on the Pay Now (enquiry) payload.
-    if (!isPayAtHotel) payload.isExternalPayment = false;
 
     try {
         var res = await fetch(getApiBase() + '/sf/raw?path=' + encodeURIComponent('/core/api/v1/beservice/perform-booking'), {
@@ -1301,46 +1244,37 @@ async function executeSfBooking() {
                     pricePerNight: villaData.pricePerNight || 0,
                     baseAmount: sfSelectedRoom.price, addonAmount: 0, taxAmount: 0,
                     totalAmount: sfSelectedRoom.price,
-                    status: isPayAtHotel ? 'confirmed' : 'pending',
+                    status: 'pending',
                     source: 'stayflexi', stayflexiBookingId: data.bookingId, stayflexiHotelId: hotelId,
                     roomTypeId: sfSelectedRoom.roomTypeId, ratePlanId: sfSelectedRoom.ratePlanId
                 })
             });
         } catch (localErr) {
             // Don't block the guest's booking/payment on this — just log it. The booking is
-            // already confirmed/enquired on Stayflexi regardless of whether this local save works.
+            // already an enquiry on Stayflexi regardless of whether this local save works.
             console.warn('[SF DEBUG] Booking succeeded on Stayflexi but failed to save locally — it will not show on the Admin Dashboard yet.', localErr.message);
         }
 
-        if (isPayAtHotel) {
-            // Already confirmed — no payment collection needed right now.
-            closeSfBookingModal();
-            window.location.href = 'confirmation.html?sfBookingId=' + encodeURIComponent(data.bookingId)
-                + '&property=' + encodeURIComponent(villaData.name)
-                + '&total=' + sfSelectedRoom.price
-                + '&status=confirmed';
-        } else {
-            // Pay Now — this is a 30-min enquiry. Send the guest straight to Stayflexi's own
-            // hosted payment gateway (Razorpay) to actually collect payment and auto-confirm.
-            var thisPageUrl = window.location.origin + window.location.pathname;
-            var successUrl = window.location.origin + '/confirmation.html?sfBookingId=' + encodeURIComponent(data.bookingId)
-                + '&property=' + encodeURIComponent(villaData.name)
-                + '&total=' + sfSelectedRoom.price
-                + '&status=confirmed';
-            var cancelUrl = thisPageUrl + window.location.search; // back to this same booking page
+        // Send the guest straight to Razorpay (via Stayflexi's hosted payment redirect)
+        // to actually collect payment and auto-confirm the booking.
+        var thisPageUrl = window.location.origin + window.location.pathname;
+        var successUrl = window.location.origin + '/confirmation.html?sfBookingId=' + encodeURIComponent(data.bookingId)
+            + '&property=' + encodeURIComponent(villaData.name)
+            + '&total=' + sfSelectedRoom.price
+            + '&status=confirmed';
+        var cancelUrl = thisPageUrl + window.location.search; // back to this same booking page
 
-            var paymentLink = 'https://bookingengine.stayflexi.com/redirect-payment-gateway/'
-                + encodeURIComponent(data.bookingId)
-                + '?hotel_id=' + encodeURIComponent(hotelId)
-                + '&redirect_url=' + encodeURIComponent(successUrl)
-                + '&cancel_url=' + encodeURIComponent(cancelUrl);
+        var paymentLink = 'https://bookingengine.stayflexi.com/redirect-payment-gateway/'
+            + encodeURIComponent(data.bookingId)
+            + '?hotel_id=' + encodeURIComponent(hotelId)
+            + '&redirect_url=' + encodeURIComponent(successUrl)
+            + '&cancel_url=' + encodeURIComponent(cancelUrl);
 
-            window.location.href = paymentLink;
-        }
+        window.location.href = paymentLink;
     } catch(err) {
         alert('Booking failed: ' + err.message);
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">' + (isPayAtHotel ? 'Confirm Booking' : 'Confirm & Pay Now') + '</span>';
+        btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">Confirm &amp; Pay via Razorpay</span>';
     }
 }
 
