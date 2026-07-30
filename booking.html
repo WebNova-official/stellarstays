@@ -284,19 +284,15 @@
                     <!-- STAYFLEXI API BOOKING: shown when property.stayflexi is set -->
                     <div id="stayflexiSection" class="hidden space-y-4">
 
-                        <!-- Date + check times -->
-                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Check-in → Check-out</label>
-                            <input type="text" id="dateRangePickerSF" placeholder="Select check-in and check-out dates" class="form-input w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-[#fdf8f0]">
-                            <div id="sfTimesBar" class="hidden grid grid-cols-2 gap-2 text-[11px]">
-                                <div class="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
-                                    <span class="font-bold text-blue-500 uppercase tracking-widest text-[9px]">Check-in</span>
-                                    <div id="sfCheckinTime" class="font-black text-blue-700 mt-0.5">—</div>
-                                </div>
-                                <div class="bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
-                                    <span class="font-bold text-emerald-500 uppercase tracking-widest text-[9px]">Check-out</span>
-                                    <div id="sfCheckoutTime" class="font-black text-emerald-700 mt-0.5">—</div>
-                                </div>
+                        <!-- Check-in / check-out times (dates are picked in the sidebar — single source of truth) -->
+                        <div id="sfTimesBar" class="hidden grid grid-cols-2 gap-2 text-[11px]">
+                            <div class="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                                <span class="font-bold text-blue-500 uppercase tracking-widest text-[9px]">Check-in</span>
+                                <div id="sfCheckinTime" class="font-black text-blue-700 mt-0.5">—</div>
+                            </div>
+                            <div class="bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+                                <span class="font-bold text-emerald-500 uppercase tracking-widest text-[9px]">Check-out</span>
+                                <div id="sfCheckoutTime" class="font-black text-emerald-700 mt-0.5">—</div>
                             </div>
                         </div>
 
@@ -740,7 +736,7 @@ function setAvailUI(status, pillLabel, badgeLabel, banner, data) {
 // NOTE: the old generic (non-Stayflexi) date pickers, price calculator, and
 // custom booking modal have been removed — every property now books through
 // Stayflexi, so dates and prices are always the live Stayflexi values
-// (see dateRangePickerSF / dateRangePickerSidebar + sfOnDatesChange below).
+// (see dateRangePickerSidebar + sfOnDatesChange below).
 // reinitDatePickers is kept as a no-op call target since loadBookingPage still
 // calls it before initialising the SF-specific pickers.
 function reinitDatePickers(blockedDates) { /* handled by SF pickers in loadBookingPage */ }
@@ -922,9 +918,7 @@ async function loadBookingPage() {
             var sidebarSF = document.getElementById('sidebarStayflexi');
             if (sidebarSF) sidebarSF.classList.remove('hidden');
 
-            // Init SF date pickers — synced to each other so main panel and
-            // sidebar never show different dates (was the root cause of
-            // "No rooms available" showing against dates the guest didn't pick).
+            // Init the single date picker — sidebar is now the only source of dates.
             var sfPickerCfg = {
                 mode: 'range', minDate: 'today', dateFormat: 'Y-m-d',
                 onChange: function(dates) {
@@ -933,27 +927,21 @@ async function loadBookingPage() {
                         checkOut = toLocalYMD(dates[1]);
                         updateAvailabilityBanner();
                         sfOnDatesChange(checkIn, checkOut);
-                        ['dateRangePickerSF', 'dateRangePickerSidebar'].forEach(function(id) {
-                            var el = document.getElementById(id);
-                            if (el && el._flatpickr) el._flatpickr.setDate([dates[0], dates[1]], false);
-                        });
                     }
                 }
             };
-            ['dateRangePickerSF','dateRangePickerSidebar'].forEach(function(id) {
-                var el = document.getElementById(id);
+            (function() {
+                var el = document.getElementById('dateRangePickerSidebar');
                 if (!el) return;
                 if (el._flatpickr) el._flatpickr.destroy(); // guard against double-init (was causing stacked calendars)
                 flatpickr(el, sfPickerCfg);
-            });
+            })();
             // Pre-fill if URL had dates — set both the internal state (for availability
-            // lookups) and the visible picker value (so the boxes actually show the dates).
+            // lookups) and the visible picker value (so the box actually shows the dates).
             if (checkIn && checkOut) {
                 sfOnDatesChange(checkIn, checkOut);
-                ['dateRangePickerSF','dateRangePickerSidebar'].forEach(function(id) {
-                    var el = document.getElementById(id);
-                    if (el && el._flatpickr) el._flatpickr.setDate([checkIn, checkOut], false);
-                });
+                var sidebarEl = document.getElementById('dateRangePickerSidebar');
+                if (sidebarEl && sidebarEl._flatpickr) sidebarEl._flatpickr.setDate([checkIn, checkOut], false);
             }
 
             // Mobile bar
@@ -1008,7 +996,7 @@ async function loadBookingPage() {
         // ── Reinit date pickers with blocked dates from DB + live SF blocked dates ──
         reinitDatePickers((villaData.blockedDates || []).concat(sfLiveBlockedDates));
 
-        // If SF property, also reinit SF pickers with blocked dates
+        // If SF property, also reinit the sidebar picker with blocked dates
         if (sfHotelId) {
             var sfOnDateChange = function(dates) {
                 if (dates.length === 2) {
@@ -1016,10 +1004,6 @@ async function loadBookingPage() {
                     checkOut = toLocalYMD(dates[1]);
                     updateAvailabilityBanner();
                     sfOnDatesChange(checkIn, checkOut);
-                    ['dateRangePickerSF', 'dateRangePickerSidebar'].forEach(function(id) {
-                        var el = document.getElementById(id);
-                        if (el && el._flatpickr) el._flatpickr.setDate([dates[0], dates[1]], false);
-                    });
                 }
             };
             var sfCfg = {
@@ -1027,12 +1011,12 @@ async function loadBookingPage() {
                 onChange: sfOnDateChange,
                 disable: (villaData.blockedDates || []).concat(sfLiveBlockedDates)
             };
-            ['dateRangePickerSF','dateRangePickerSidebar'].forEach(function(id) {
-                var el = document.getElementById(id);
-                if (!el) return;
-                if (el._flatpickr) el._flatpickr.destroy();
-                flatpickr(el, sfCfg);
-            });
+            var sidebarPickerEl = document.getElementById('dateRangePickerSidebar');
+            if (sidebarPickerEl) {
+                if (sidebarPickerEl._flatpickr) sidebarPickerEl._flatpickr.destroy();
+                flatpickr(sidebarPickerEl, sfCfg);
+                if (checkIn && checkOut) sidebarPickerEl._flatpickr.setDate([checkIn, checkOut], false);
+            }
         }
 
     } catch (err) {
