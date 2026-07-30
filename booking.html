@@ -222,12 +222,12 @@
         </div>
     </div>
 
-    <!-- Content + Sidebar -->
+    <!-- Tab Content -->
     <div class="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24 lg:pb-6">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
             <!-- LEFT: Tab Content -->
-            <div class="lg:col-span-7">
+            <div class="lg:col-span-12 max-w-3xl mx-auto w-full">
 
                 <!-- OVERVIEW -->
                 <div id="tab-overview" class="space-y-6 scroll-mt-32">
@@ -266,62 +266,91 @@
 
                 <!-- AVAILABILITY -->
                 <div id="tab-availability" class="space-y-4 scroll-mt-32 pt-6 border-t border-gray-100">
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between max-w-xl mx-auto w-full">
                         <h2 class="text-xl font-black text-[#0f1f3d]">Real-Time Availability</h2>
                         <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">
                             <span class="status-dot w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> Live Availability
                         </div>
                     </div>
-                    <div id="availBanner" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                            <i class="fa-solid fa-calendar-check text-gray-300 text-xl"></i>
-                        </div>
-                        <div class="flex-1">
-                            <div class="text-sm font-black text-gray-400">Select dates to check live availability</div>
-                            <div class="text-xs text-gray-400 mt-0.5">Pick your check-in and check-out dates to see real-time rates.</div>
-                        </div>
-                    </div>
 
-                    <!-- Booking widget: hidden until the property's Stayflexi hotel ID loads -->
-                    <div id="stayflexiSection" class="hidden space-y-4">
+                    <!-- Single booking card — price header, dates, rooms, selection & CTA all live here -->
+                    <div class="max-w-xl mx-auto w-full bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
 
-                        <!-- Date picker — only shown here on mobile/tablet. Desktop users have
-                             the same picker in the sticky sidebar, so we don't duplicate it there. -->
-                        <div class="lg:hidden">
-                            <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Select Dates</label>
-                            <input type="text" id="dateRangePickerMain" placeholder="Check-in &#8594; Check-out" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-white">
-                        </div>
-
-                        <!-- Check-in / check-out time slots for the selected dates -->
-                        <div id="sfTimesBar" class="hidden flex items-center gap-4 text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
-                            <span><i class="fa-solid fa-right-to-bracket text-emerald-500 mr-1"></i> Check-in from <span id="sfCheckinTime" class="text-gray-700">&#8212;</span></span>
-                            <span><i class="fa-solid fa-right-from-bracket text-red-400 mr-1"></i> Check-out by <span id="sfCheckoutTime" class="text-gray-700">&#8212;</span></span>
-                        </div>
-
-                        <!-- Live room + rate list, populated by sfOnDatesChange() once dates are picked -->
-                        <div id="sfRoomCards" class="hidden space-y-3">
-                            <h3 class="text-sm font-black text-[#0f1f3d]">Available Rooms</h3>
-                            <div id="sfRoomList" class="space-y-3"></div>
-                        </div>
-
-                        <!-- Selected room summary, shown once selectSfRoom() runs -->
-                        <div id="sfSelectedRoom" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3">
-                            <div class="text-xs min-w-0">
-                                <div class="font-black text-emerald-800 text-sm truncate" id="sfSelRoomName">&#8212;</div>
-                                <div class="text-emerald-600" id="sfSelRatePlan">&#8212;</div>
+                        <div class="p-4 border-b border-gray-100">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <div class="text-2xl font-black text-[#0f1f3d]" style="font-family:'Playfair Display',serif;">
+                                        <span id="stickyRatePrint">&#8377;0</span><span class="text-sm font-normal text-gray-400"> / night</span>
+                                    </div>
+                                    <div class="text-xs text-amber-600 font-semibold mt-1 flex items-center gap-1">
+                                        <i class="fa-solid fa-bolt"></i> Direct Booking &middot; Zero Commission
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-lg font-bold text-[#0f1f3d] flex items-center gap-1 justify-end">
+                                        <i class="fa-solid fa-star text-amber-500 text-sm"></i><span id="stickyRating">0.0</span>
+                                    </div>
+                                    <div class="text-[10px] text-gray-400 font-medium">Excellent</div>
+                                </div>
                             </div>
-                            <div class="text-right shrink-0">
-                                <div class="text-lg font-black text-emerald-700" id="sfSelTotal">&#8377;0</div>
-                                <button type="button" onclick="clearSfSelection()" class="text-[10px] font-bold text-emerald-500 hover:text-emerald-700 underline">Change room</button>
+                            <div class="mt-2 pt-2 border-t border-gray-100">
+                                <span id="sidebarAvailBadge" class="text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 avail-loading" style="width:fit-content;">
+                                    <span class="status-dot w-1.5 h-1.5 rounded-full bg-gray-400 inline-block"></span>
+                                    Select dates to check availability
+                                </span>
                             </div>
                         </div>
 
-                        <button id="sfBookCta" onclick="openSfBookingModal()" class="hidden w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide items-center justify-center gap-2 text-sm">
-                            <i class="fa-solid fa-lock text-xs"></i> Continue to Book
+                        <div id="availBanner" class="p-4 border-b border-gray-100 flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-calendar-check text-gray-300 text-xl"></i>
+                            </div>
+                            <div class="flex-1">
+                                <div class="text-sm font-black text-gray-400">Select dates to check live availability</div>
+                                <div class="text-xs text-gray-400 mt-0.5">Pick your check-in and check-out dates to see real-time rates.</div>
+                            </div>
+                        </div>
+
+                        <!-- Booking widget: hidden until the property's Stayflexi hotel ID loads -->
+                        <div id="stayflexiSection" class="hidden p-4 space-y-4">
+
+                            <div>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Select Dates</label>
+                                <input type="text" id="dateRangePickerMain" placeholder="Check-in &#8594; Check-out" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-[#fdf8f0]">
+                            </div>
+
+                            <!-- Check-in / check-out time slots for the selected dates -->
+                            <div id="sfTimesBar" class="hidden flex items-center gap-4 text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
+                                <span><i class="fa-solid fa-right-to-bracket text-emerald-500 mr-1"></i> Check-in from <span id="sfCheckinTime" class="text-gray-700">&#8212;</span></span>
+                                <span><i class="fa-solid fa-right-from-bracket text-red-400 mr-1"></i> Check-out by <span id="sfCheckoutTime" class="text-gray-700">&#8212;</span></span>
+                            </div>
+
+                            <!-- Live room + rate list, populated by sfOnDatesChange() once dates are picked -->
+                            <div id="sfRoomCards" class="hidden space-y-3">
+                                <h3 class="text-sm font-black text-[#0f1f3d]">Available Rooms</h3>
+                                <div id="sfRoomList" class="space-y-3"></div>
+                            </div>
+
+                            <!-- Selected room summary, shown once selectSfRoom() runs -->
+                            <div id="sfSelectedRoom" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+                                <div class="text-xs min-w-0">
+                                    <div class="font-black text-emerald-800 text-sm truncate" id="sfSelRoomName">&#8212;</div>
+                                    <div class="text-emerald-600" id="sfSelRatePlan">&#8212;</div>
+                                </div>
+                                <div class="text-right shrink-0">
+                                    <div class="text-lg font-black text-emerald-700" id="sfSelTotal">&#8377;0</div>
+                                    <button type="button" onclick="clearSfSelection()" class="text-[10px] font-bold text-emerald-500 hover:text-emerald-700 underline">Change room</button>
+                                </div>
+                            </div>
+
+                            <button id="sfBookCta" onclick="openSfBookingModal()" class="hidden w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide items-center justify-center gap-2 text-sm">
+                                <i class="fa-solid fa-lock text-xs"></i> Continue to Book
                         </button>
+                        </div>
+
                     </div>
 
-                    <p class="text-xs text-gray-400 font-medium flex items-center gap-1.5">
+                    <p class="text-xs text-gray-400 font-medium flex items-center justify-center gap-1.5 max-w-xl mx-auto w-full">
                         <i class="fa-solid fa-bolt text-amber-400"></i>
                         Live rates &amp; instant confirmation.
                     </p>
@@ -355,60 +384,6 @@
                     <div class="space-y-2.5" id="faqContainer"></div>
                 </div>
 
-            </div>
-
-            <!-- RIGHT SIDEBAR -->
-            <div class="lg:col-span-5 hidden lg:block">
-                <div class="sticky-sidebar bg-white rounded-2xl border border-gray-200 shadow-lg">
-
-                    <div class="p-4 border-b border-gray-100">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="text-2xl font-black text-[#0f1f3d]" style="font-family:'Playfair Display',serif;">
-                                    <span id="stickyRatePrint">&#8377;0</span><span class="text-sm font-normal text-gray-400"> / night</span>
-                                </div>
-                                <div class="text-xs text-amber-600 font-semibold mt-1 flex items-center gap-1">
-                                    <i class="fa-solid fa-bolt"></i> Direct Booking &middot; Zero Commission
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-lg font-bold text-[#0f1f3d] flex items-center gap-1 justify-end">
-                                    <i class="fa-solid fa-star text-amber-500 text-sm"></i><span id="stickyRating">0.0</span>
-                                </div>
-                                <div class="text-[10px] text-gray-400 font-medium">Excellent</div>
-                            </div>
-                        </div>
-                        <div class="mt-2 pt-2 border-t border-gray-100">
-                            <span id="sidebarAvailBadge" class="text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 avail-loading" style="width:fit-content;">
-                                <span class="status-dot w-1.5 h-1.5 rounded-full bg-gray-400 inline-block"></span>
-                                Select dates to check availability
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- SIDEBAR: Stayflexi variant (shown when property has stayflexi ID) -->
-                    <div id="sidebarStayflexi" class="hidden p-4 space-y-3">
-                        <div>
-                            <input type="text" id="dateRangePickerSidebar" placeholder="Check-in &#8594; Check-out" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-[#fdf8f0]">
-                        </div>
-                        <!-- Live SF price summary in sidebar -->
-                        <div id="sfSidebarPrice" class="hidden space-y-1.5 text-xs font-medium text-gray-600 bg-[#fdf8f0] p-3 rounded-xl border border-amber-100">
-                            <div class="flex justify-between"><span class="text-gray-500">Room</span><span id="sfSidebarRoomName" class="font-bold text-gray-900 text-right max-w-[60%] truncate">—</span></div>
-                            <div class="flex justify-between"><span class="text-gray-500">Rate Plan</span><span id="sfSidebarRatePlan" class="font-bold text-gray-900">—</span></div>
-                            <div class="flex justify-between text-sm font-extrabold text-[#0f1f3d] pt-1.5 border-t border-dashed border-amber-200">
-                                <span>Total Payable</span><span id="sfSidebarTotal" class="text-base text-emerald-600">₹0</span>
-                            </div>
-                        </div>
-                        <button id="sidebarBookCta" onclick="scrollToSection('availability')" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                            <i class="fa-solid fa-calendar-check text-xs"></i> Check Availability &amp; Book
-                        </button>
-                        <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
-                            <i class="fa-solid fa-bolt text-amber-400"></i>
-                            Live availability &amp; secure payment
-                        </p>
-                    </div>
-
-                </div>
             </div>
 
         </div>
@@ -743,13 +718,13 @@ function getApiBase() {
     return (p && p !== '5000') ? 'http://' + h + ':5000/api' : '/api';
 }
 
-// Drives every Stayflexi date-range picker on the page (sidebar on desktop,
-// main-content on mobile) from one shared config, so picking a date in either
-// one updates the other and both fire the same availability lookup. Each
-// picker is destroyed before reinit — this is what prevents the old "stacked
-// calendar" bug from double-initializing the same input.
+// Inits (or reinits, once live blocked dates are known) the single Stayflexi
+// date-range picker. Always destroys any existing instance first — this is
+// what prevents the old "stacked calendar" bug from double-initializing the
+// same input.
 function initSfDatePickers(blockedDates) {
-    var pickerIds = ['dateRangePickerSidebar', 'dateRangePickerMain'];
+    var el = document.getElementById('dateRangePickerMain');
+    if (!el) return;
     var cfg = {
         mode: 'range', minDate: 'today', dateFormat: 'Y-m-d',
         disable: blockedDates || [],
@@ -759,21 +734,13 @@ function initSfDatePickers(blockedDates) {
             checkOut = toLocalYMD(dates[1]);
             updateAvailabilityBanner();
             sfOnDatesChange(checkIn, checkOut);
-            // Mirror the selection onto the other picker without re-triggering onChange
-            pickerIds.forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el && el._flatpickr) el._flatpickr.setDate([checkIn, checkOut], false);
-            });
         }
     };
-    pickerIds.forEach(function(id) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        if (el._flatpickr) el._flatpickr.destroy();
-        flatpickr(el, cfg);
-        if (checkIn && checkOut) el._flatpickr.setDate([checkIn, checkOut], false);
-    });
+    if (el._flatpickr) el._flatpickr.destroy();
+    flatpickr(el, cfg);
+    if (checkIn && checkOut) el._flatpickr.setDate([checkIn, checkOut], false);
 }
+
 
 async function loadBookingPage() {
     var propertyId  = getParam('id');
@@ -924,12 +891,9 @@ async function loadBookingPage() {
         var sfHotelId = (villaData.stayflexi || '').trim();
         if (sfHotelId) {
             if (sfSection) sfSection.classList.remove('hidden');
-            var sidebarSF = document.getElementById('sidebarStayflexi');
-            if (sidebarSF) sidebarSF.classList.remove('hidden');
 
-            // Init date pickers (sidebar on desktop, main content on mobile) — see
-            // initSfDatePickers() below. Reinitialized again once live blocked dates
-            // come back from Stayflexi.
+            // Init the date picker — see initSfDatePickers() below. Reinitialized
+            // again once live blocked dates come back from Stayflexi.
             initSfDatePickers([]);
             // Pre-fill if URL had dates — kicks off the availability/room lookup
             // immediately, ahead of the blocked-dates reinit below.
@@ -1143,19 +1107,12 @@ function selectSfRoom(room) {
     document.getElementById('sfSelTotal').textContent     = '₹' + room.price.toLocaleString('en-IN');
     document.getElementById('sfSelectedRoom').classList.remove('hidden');
     document.getElementById('sfBookCta').classList.remove('hidden');
-    // Update sidebar price
-    document.getElementById('sfSidebarRoomName').textContent = room.roomTypeName;
-    document.getElementById('sfSidebarRatePlan').textContent = room.ratePlanName;
-    document.getElementById('sfSidebarTotal').textContent    = '₹' + room.price.toLocaleString('en-IN');
-    document.getElementById('sfSidebarPrice').classList.remove('hidden');
-    document.querySelector('#sidebarStayflexi button').textContent = 'Book Now';
 }
 
 function clearSfSelection() {
     sfSelectedRoom = null;
     document.getElementById('sfSelectedRoom').classList.add('hidden');
     document.getElementById('sfBookCta').classList.add('hidden');
-    document.getElementById('sfSidebarPrice').classList.add('hidden');
 }
 
 function openSfBookingModal() {
