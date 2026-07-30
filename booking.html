@@ -227,7 +227,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
             <!-- LEFT: Tab Content -->
-            <div class="lg:col-span-12 max-w-3xl mx-auto w-full">
+            <div class="lg:col-span-8 w-full">
 
                 <!-- OVERVIEW -->
                 <div id="tab-overview" class="space-y-6 scroll-mt-32">
@@ -384,6 +384,45 @@
                     <div class="space-y-2.5" id="faqContainer"></div>
                 </div>
 
+            </div>
+
+            <!-- RIGHT: Sticky mini booking box, desktop only -->
+            <div class="hidden lg:block lg:col-span-4">
+                <div class="sticky-sidebar bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
+                    <div class="p-4 border-b border-gray-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="text-2xl font-black text-[#0f1f3d]" style="font-family:'Playfair Display',serif;">
+                                    <span id="sideRatePrint">&#8377;0</span><span class="text-sm font-normal text-gray-400"> / night</span>
+                                </div>
+                                <div class="text-xs text-amber-600 font-semibold mt-1 flex items-center gap-1">
+                                    <i class="fa-solid fa-bolt"></i> Direct Booking &middot; Zero Commission
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold text-[#0f1f3d] flex items-center gap-1 justify-end">
+                                    <i class="fa-solid fa-star text-amber-500 text-sm"></i><span id="sideRating">0.0</span>
+                                </div>
+                                <div class="text-[10px] text-gray-400 font-medium">Excellent</div>
+                            </div>
+                        </div>
+                        <div class="mt-2 pt-2 border-t border-gray-100">
+                            <span id="sideAvailBadge" class="text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 avail-loading" style="width:fit-content;">
+                                <span class="status-dot w-1.5 h-1.5 rounded-full bg-gray-400 inline-block"></span>
+                                Select dates to check availability
+                            </span>
+                        </div>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <button onclick="scrollToSection('availability')" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
+                            <i class="fa-solid fa-lock text-xs"></i> Book Now
+                        </button>
+                        <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+                            Live rates &amp; instant confirmation
+                        </p>
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -667,12 +706,17 @@ function setAvailUI(status, pillLabel, badgeLabel, banner, data) {
     var pill      = document.getElementById('availabilityPill');
     var text      = document.getElementById('availabilityText');
     var sideBadge = document.getElementById('sidebarAvailBadge');
+    var sideBadge2 = document.getElementById('sideAvailBadge');
     pill.className = 'text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 avail-' + status;
     text.textContent = pillLabel;
-    sideBadge.className = 'text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 avail-' + status;
-    sideBadge.style.width = 'fit-content';
     var dotColor = status === 'available' ? 'bg-emerald-500' : status === 'limited' ? 'bg-amber-500' : status === 'unavailable' ? 'bg-red-500' : 'bg-gray-400';
-    sideBadge.innerHTML = '<span class="status-dot w-1.5 h-1.5 rounded-full inline-block ' + dotColor + '"></span> ' + badgeLabel;
+    var badgeHtml = '<span class="status-dot w-1.5 h-1.5 rounded-full inline-block ' + dotColor + '"></span> ' + badgeLabel;
+    [sideBadge, sideBadge2].forEach(function(el) {
+        if (!el) return;
+        el.className = 'text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 avail-' + status;
+        el.style.width = 'fit-content';
+        el.innerHTML = badgeHtml;
+    });
     if (data && banner) {
         var nights = Math.round((new Date(data.checkOut) - new Date(data.checkIn)) / 86400000);
         var isAvail = status === 'available';
@@ -778,6 +822,10 @@ async function loadBookingPage() {
         var rateStr = '\u20b9' + (villaData.pricePerNight || 0).toLocaleString('en-IN');
         document.getElementById('stickyRatePrint').textContent  = rateStr;
         document.getElementById('mobileStickyRate').textContent = rateStr;
+        var sideRatingEl = document.getElementById('sideRating');
+        var sideRateEl   = document.getElementById('sideRatePrint');
+        if (sideRatingEl) sideRatingEl.textContent = villaData.rating || '4.8';
+        if (sideRateEl)   sideRateEl.textContent   = rateStr;
         document.getElementById('navVillaTitle').textContent    = villaData.name || '';
 
         // Amenities
@@ -1092,8 +1140,10 @@ async function sfOnDatesChange(cin, cout) {
             var rateStr = '₹' + perNight.toLocaleString('en-IN');
             var stickyEl = document.getElementById('stickyRatePrint');
             var mobileEl = document.getElementById('mobileStickyRate');
+            var sideEl   = document.getElementById('sideRatePrint');
             if (stickyEl) stickyEl.textContent = rateStr;
             if (mobileEl) mobileEl.textContent = rateStr;
+            if (sideEl)   sideEl.textContent   = rateStr;
         }
     } catch(err) {
         document.getElementById('sfRoomList').innerHTML = '<div class="text-sm text-red-400 font-semibold text-center py-4">Error fetching rates: ' + err.message + '</div>';
