@@ -391,16 +391,6 @@
                         <div>
                             <input type="text" id="dateRangePickerSidebar" placeholder="Check-in &#8594; Check-out" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-[#fdf8f0]">
                         </div>
-                        <!-- Guest details (captured upfront, carried into booking) -->
-                        <div class="space-y-1.5 pt-1 border-t border-gray-100">
-                            <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest pt-1.5">Your Details</h4>
-                            <input type="text" id="sfSidebarFirst" placeholder="Full name" class="form-input w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-[#0f1f3d] transition bg-gray-50">
-                            <input type="email" id="sfSidebarEmail" placeholder="Email" class="form-input w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-[#0f1f3d] transition bg-gray-50">
-                            <div class="flex">
-                                <span class="bg-gray-100 border border-r-0 border-gray-200 rounded-l-xl px-2.5 flex items-center text-xs font-semibold text-gray-500">+91</span>
-                                <input type="tel" id="sfSidebarPhone" placeholder="Phone" class="form-input flex-1 border border-gray-200 rounded-r-xl px-3 py-2 text-xs font-semibold text-[#0f1f3d] transition bg-gray-50">
-                            </div>
-                        </div>
                         <!-- Live SF price summary in sidebar -->
                         <div id="sfSidebarPrice" class="hidden space-y-1.5 text-xs font-medium text-gray-600 bg-[#fdf8f0] p-3 rounded-xl border border-amber-100">
                             <div class="flex justify-between"><span class="text-gray-500">Room</span><span id="sfSidebarRoomName" class="font-bold text-gray-900 text-right max-w-[60%] truncate">—</span></div>
@@ -1176,13 +1166,6 @@ function openSfBookingModal() {
     document.getElementById('sfModalTotal').textContent = '₹' + sfSelectedRoom.price.toLocaleString('en-IN');
     document.getElementById('sfAdultsCount').textContent   = sfGuests.adults;
     document.getElementById('sfChildrenCount').textContent = sfGuests.children;
-    // Carry over name/email/phone captured early in the sidebar card
-    var sbFirst = document.getElementById('sfSidebarFirst')?.value.trim();
-    var sbEmail = document.getElementById('sfSidebarEmail')?.value.trim();
-    var sbPhone = document.getElementById('sfSidebarPhone')?.value.trim();
-    if (sbFirst && !document.getElementById('sfGuestFirst').value) document.getElementById('sfGuestFirst').value = sbFirst;
-    if (sbEmail && !document.getElementById('sfGuestEmail').value) document.getElementById('sfGuestEmail').value = sbEmail;
-    if (sbPhone && !document.getElementById('sfGuestPhone').value) document.getElementById('sfGuestPhone').value = sbPhone;
     document.getElementById('sfBookingModal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 }
