@@ -1107,12 +1107,17 @@ function selectSfRoom(room) {
     document.getElementById('sfSelTotal').textContent     = '₹' + room.price.toLocaleString('en-IN');
     document.getElementById('sfSelectedRoom').classList.remove('hidden');
     document.getElementById('sfBookCta').classList.remove('hidden');
+    // Hide the room list once something's selected, so there's only one box
+    // on screen (the selected-room summary) instead of the card + summary both showing.
+    document.getElementById('sfRoomCards').classList.add('hidden');
 }
 
 function clearSfSelection() {
     sfSelectedRoom = null;
     document.getElementById('sfSelectedRoom').classList.add('hidden');
     document.getElementById('sfBookCta').classList.add('hidden');
+    // Bring the room list back so the guest can pick a different room.
+    document.getElementById('sfRoomCards').classList.remove('hidden');
 }
 
 function openSfBookingModal() {
