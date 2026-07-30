@@ -269,7 +269,7 @@
                     <div class="flex items-center justify-between">
                         <h2 class="text-xl font-black text-[#0f1f3d]">Real-Time Availability</h2>
                         <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">
-                            <span class="status-dot w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> Powered by Stayflexi
+                            <span class="status-dot w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> Live Availability
                         </div>
                     </div>
                     <div id="availBanner" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
@@ -278,7 +278,7 @@
                         </div>
                         <div class="flex-1">
                             <div class="text-sm font-black text-gray-400">Select dates to check live availability</div>
-                            <div class="text-xs text-gray-400 mt-0.5">Pick your check-in and check-out dates to see real-time rates via Stayflexi.</div>
+                            <div class="text-xs text-gray-400 mt-0.5">Pick your check-in and check-out dates to see real-time rates.</div>
                         </div>
                     </div>
                     <!-- STAYFLEXI API BOOKING: shown when property.stayflexi is set -->
@@ -324,25 +324,13 @@
 
                         <!-- SF Booking CTA (goes to modal) -->
                         <button id="sfBookCta" onclick="openSfBookingModal()" class="hidden w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                            <i class="fa-solid fa-lock text-xs"></i> Book with Stayflexi
+                            <i class="fa-solid fa-lock text-xs"></i> Book Now
                         </button>
 
                         <p class="text-[11px] text-gray-400 font-medium flex items-center gap-1.5">
                             <i class="fa-solid fa-bolt text-amber-400"></i>
-                            Live rates &amp; instant confirmation via Stayflexi API.
+                            Live rates &amp; instant confirmation.
                         </p>
-                    </div>
-
-                    <!-- CUSTOM BOOKING FALLBACK: shown when no stayflexi ID -->
-                    <div id="customBookSection" class="hidden space-y-4">
-                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Check-in &#8594; Check-out</label>
-                            <input type="text" id="dateRangePicker" placeholder="Select check-in and check-out dates" class="form-input w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-[#fdf8f0]">
-                            <p class="text-[11px] text-gray-400 mt-2 font-medium"><i class="fa-solid fa-circle-info mr-1 text-amber-400"></i> Minimum stay may apply. Select a range to see your total.</p>
-                        </div>
-                        <button id="sidebarBookCta" onclick="openBookingModal()" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                            <i class="fa-solid fa-lock text-xs"></i> Confirm &amp; Pay Securely
-                        </button>
                     </div>
                 </div>
 
@@ -433,194 +421,13 @@
                         </button>
                         <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
                             <i class="fa-solid fa-bolt text-amber-400"></i>
-                            Live availability &amp; payment via Stayflexi
+                            Live availability &amp; secure payment
                         </p>
                     </div>
 
-                    <!-- SIDEBAR: Custom booking variant (shown when NO stayflexi ID) -->
-                    <div id="sidebarCustom" class="hidden p-4 space-y-3">
-                        <div>
-                            <input type="text" id="dateRangePickerSidebarCustom" placeholder="Check-in &#8594; Check-out" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-[#fdf8f0]">
-                        </div>
-
-                        <!-- Guest summary (opens modal) -->
-                        <button type="button" onclick="openBookingModal()" class="w-full flex items-center justify-between gap-2 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] bg-gray-50 hover:bg-gray-100 transition">
-                            <span class="flex items-center gap-2 text-left"><i class="fa-solid fa-users text-amber-500 text-xs shrink-0"></i> <span id="guestCountSummary">2 Adults, 0 Children, 0 Infants</span></span>
-                            <i class="fa-solid fa-chevron-right text-gray-400 text-xs shrink-0"></i>
-                        </button>
-
-                        <!-- Price Breakdown -->
-                        <div class="space-y-1.5 text-xs font-medium text-gray-600 bg-[#fdf8f0] p-3 rounded-xl border border-amber-100">
-                            <div class="flex justify-between"><span id="baseLabel" class="text-gray-500">Base Accommodation Fee</span><span id="baseCost" class="font-bold text-gray-900">&#8377;0</span></div>
-                            <div class="flex justify-between hidden" id="addonChefRow"><span class="text-gray-500">Private Chef</span><span id="addonChefCost" class="font-bold text-gray-900">&#8377;0</span></div>
-                            <div class="flex justify-between hidden" id="addonBonfireRow"><span class="text-gray-500">Bonfire Setup</span><span id="addonBonfireCost" class="font-bold text-gray-900">&#8377;0</span></div>
-                            <div class="flex justify-between"><span class="text-gray-500">GST &amp; Levies (18%)</span><span id="taxCost" class="font-bold text-gray-900">&#8377;0</span></div>
-                            <div class="flex justify-between text-sm font-extrabold text-[#0f1f3d] pt-1.5 border-t border-dashed border-amber-200">
-                                <span>Total Payable</span><span id="grandTotal" class="text-base text-emerald-600">&#8377;0</span>
-                            </div>
-                        </div>
-
-                        <!-- CTA -->
-                        <button onclick="openBookingModal()" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                            <i class="fa-solid fa-lock text-xs"></i> Confirm &amp; Pay Securely
-                        </button>
-
-                        <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
-                            <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-                            Secure payment &middot; Free cancellation 7+ days prior
-                        </p>
-                    </div>
                 </div>
             </div>
 
-        </div>
-    </div>
-    <!-- Booking Modal -->
-    <div id="bookingModal" class="hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
-        <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div class="flex items-center justify-between p-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-                <h3 class="text-lg font-black text-[#0f1f3d]">Complete Your Booking</h3>
-                <button onclick="closeBookingModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="p-4 space-y-4">
-
-                <!-- Guest Info -->
-                <div class="space-y-2">
-                    <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Lead Guest Information</h4>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Full Name *</label>
-                        <input type="text" id="guestName" placeholder="e.g. Rahul Sharma" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Email Address *</label>
-                        <input type="email" id="guestEmail" placeholder="rahul@example.com" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">WhatsApp Number *</label>
-                        <div class="flex">
-                            <span class="bg-gray-100 border border-r-0 border-gray-200 rounded-l-xl px-3 flex items-center text-sm font-semibold text-gray-500">+91</span>
-                            <input type="tel" id="guestPhone" placeholder="98765 43210" class="form-input flex-1 border border-gray-200 rounded-r-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 pt-1">
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">City</label>
-                            <input type="text" id="guestCity" placeholder="e.g. Mumbai" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">State</label>
-                            <input type="text" id="guestState" placeholder="e.g. Maharashtra" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Purpose of Visit</label>
-                        <select id="guestPurpose" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
-                            <option value="">— Select —</option>
-                            <option>Family Vacation</option>
-                            <option>Birthday / Anniversary</option>
-                            <option>Corporate Retreat</option>
-                            <option>Bachelorette / Stag Party</option>
-                            <option>Honeymoon</option>
-                            <option>Friends Getaway</option>
-                            <option>Other</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Special Requests <span class="normal-case text-gray-300 font-normal">(optional)</span></label>
-                        <textarea id="guestSpecialRequests" rows="2" placeholder="Dietary needs, early check-in, room decoration…" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50 resize-none"></textarea>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ID Proof Type *</label>
-                        <select id="guestIdType" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
-                            <option value="">— Select ID —</option>
-                            <option>Aadhaar Card</option>
-                            <option>PAN Card</option>
-                            <option>Passport</option>
-                            <option>Driving Licence</option>
-                            <option>Voter ID</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ID Number *</label>
-                        <input type="text" id="guestIdNumber" placeholder="Enter ID number" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
-                    </div>
-                </div>
-
-                <hr class="border-gray-100">
-
-                <!-- Guest Counter -->
-                <div class="bg-[#fdf8f0] rounded-xl border border-amber-100 p-3 space-y-1.5">
-                    <h4 class="text-[10px] font-black text-gray-500 uppercase tracking-widest">Number of Guests</h4>
-                    <div class="flex items-center justify-between py-0.5">
-                        <div class="text-sm font-bold text-[#0f1f3d]">Adults <span class="text-[10px] font-medium text-gray-400">(13+)</span></div>
-                        <div class="flex items-center gap-2">
-                            <button type="button" onclick="changeGuests('adults',-1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">&#8722;</button>
-                            <span id="adultsCount" class="w-4 text-center text-sm font-black text-[#0f1f3d]">2</span>
-                            <button type="button" onclick="changeGuests('adults',1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">+</button>
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between py-0.5">
-                        <div class="text-sm font-bold text-[#0f1f3d]">Children <span class="text-[10px] font-medium text-gray-400">(2&#8211;12)</span></div>
-                        <div class="flex items-center gap-2">
-                            <button type="button" onclick="changeGuests('children',-1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">&#8722;</button>
-                            <span id="childrenCount" class="w-4 text-center text-sm font-black text-[#0f1f3d]">0</span>
-                            <button type="button" onclick="changeGuests('children',1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">+</button>
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between py-0.5">
-                        <div class="text-sm font-bold text-[#0f1f3d]">Infants <span class="text-[10px] font-medium text-gray-400">(under 2)</span></div>
-                        <div class="flex items-center gap-2">
-                            <button type="button" onclick="changeGuests('infants',-1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">&#8722;</button>
-                            <span id="infantsCount" class="w-4 text-center text-sm font-black text-[#0f1f3d]">0</span>
-                            <button type="button" onclick="changeGuests('infants',1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">+</button>
-                        </div>
-                    </div>
-                    <div id="maxGuestWarning" class="hidden text-[11px] text-red-600 font-semibold flex items-center gap-1.5 pt-1 border-t border-amber-100">
-                        <i class="fa-solid fa-triangle-exclamation"></i>
-                        <span id="maxGuestWarningText">Exceeds max capacity for this villa.</span>
-                    </div>
-                </div>
-
-                <hr class="border-gray-100">
-
-                <!-- Add-ons -->
-                <div class="space-y-2">
-                    <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Enhance Your Stay</h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <label class="flex items-center justify-between p-2.5 rounded-xl bg-amber-50 border border-amber-100 text-xs font-bold text-gray-700 cursor-pointer hover:border-amber-300 transition">
-                            <span class="flex items-center gap-2"><input type="checkbox" id="addonChef" onchange="calculateTotal()" class="accent-amber-500 w-4 h-4"><span>&#127859; Chef</span></span>
-                            <span class="text-amber-700 font-black text-[11px]">+&#8377;4,500/day</span>
-                        </label>
-                        <label class="flex items-center justify-between p-2.5 rounded-xl bg-orange-50 border border-orange-100 text-xs font-bold text-gray-700 cursor-pointer hover:border-orange-300 transition">
-                            <span class="flex items-center gap-2"><input type="checkbox" id="addonBonfire" onchange="calculateTotal()" class="accent-orange-500 w-4 h-4"><span>&#128293; Bonfire</span></span>
-                            <span class="text-orange-700 font-black text-[11px]">+&#8377;1,500/nt</span>
-                        </label>
-                    </div>
-                </div>
-
-                <hr class="border-gray-100">
-
-                <!-- Price Breakdown (mirror) -->
-                <div class="space-y-1.5 text-xs font-medium text-gray-600 bg-[#fdf8f0] p-3 rounded-xl border border-amber-100">
-                    <div class="flex justify-between"><span id="baseLabelModal" class="text-gray-500">Base Accommodation Fee</span><span id="baseCostModal" class="font-bold text-gray-900">&#8377;0</span></div>
-                    <div class="flex justify-between hidden" id="addonChefRowModal"><span class="text-gray-500">Private Chef</span><span id="addonChefCostModal" class="font-bold text-gray-900">&#8377;0</span></div>
-                    <div class="flex justify-between hidden" id="addonBonfireRowModal"><span class="text-gray-500">Bonfire Setup</span><span id="addonBonfireCostModal" class="font-bold text-gray-900">&#8377;0</span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">GST &amp; Levies (18%)</span><span id="taxCostModal" class="font-bold text-gray-900">&#8377;0</span></div>
-                    <div class="flex justify-between text-sm font-extrabold text-[#0f1f3d] pt-1.5 border-t border-dashed border-amber-200">
-                        <span>Total Payable</span><span id="grandTotalModal" class="text-base text-emerald-600">&#8377;0</span>
-                    </div>
-                </div>
-
-                <!-- CTA -->
-                <button onclick="executePaymentGateway()" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                    <i class="fa-solid fa-lock text-xs"></i> Confirm &amp; Pay Securely
-                </button>
-
-                <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
-                    <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-                    Secure payment &middot; Free cancellation 7+ days prior
-                </p>
-            </div>
         </div>
     </div>
 
@@ -720,7 +527,7 @@
                         <span>💳 Pay Now</span>
                     </label>
                 </div>
-                <p id="sfPayNowNote" class="hidden text-[10px] text-amber-700 font-semibold mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">You'll be redirected to Stayflexi's secure payment page to pay now. Your booking is held for 30 minutes as an enquiry until payment completes.</p>
+                <p id="sfPayNowNote" class="hidden text-[10px] text-amber-700 font-semibold mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">You'll be redirected to our secure payment page to pay now. Your booking is held for 30 minutes as an enquiry until payment completes.</p>
             </div>
 
             <button onclick="executeSfBooking()" id="sfBookSubmitBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
@@ -728,7 +535,7 @@
             </button>
             <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-                Powered by Stayflexi · Instant confirmation
+                Secure payment · Instant confirmation
             </p>
         </div>
     </div>
@@ -874,35 +681,6 @@ document.addEventListener('keydown', function(e) {
 const guests = { adults: 2, children: 0, infants: 0 };
 let MAX_GUESTS = 20;
 
-function changeGuests(type, delta) {
-    const min = type === 'adults' ? 1 : 0;
-    guests[type] = Math.max(min, guests[type] + delta);
-    const total = guests.adults + guests.children;
-    if (total > MAX_GUESTS) {
-        guests[type] -= delta;
-        document.getElementById('maxGuestWarning').classList.remove('hidden');
-        document.getElementById('maxGuestWarningText').textContent = 'Max ' + MAX_GUESTS + ' guests allowed for this villa.';
-        return;
-    }
-    document.getElementById('maxGuestWarning').classList.add('hidden');
-    document.getElementById('adultsCount').textContent   = guests.adults;
-    document.getElementById('childrenCount').textContent = guests.children;
-    document.getElementById('infantsCount').textContent  = guests.infants;
-    var parts = [guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : '')];
-    if (guests.children) parts.push(guests.children + ' Child' + (guests.children !== 1 ? 'ren' : ''));
-    if (guests.infants)  parts.push(guests.infants  + ' Infant' + (guests.infants  !== 1 ? 's' : ''));
-    var fullParts = [
-        guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : ''),
-        guests.children + ' Child' + (guests.children !== 1 ? 'ren' : ''),
-        guests.infants + ' Infant' + (guests.infants !== 1 ? 's' : '')
-    ];
-    document.getElementById('guestCountSummary').textContent = fullParts.join(', ');
-    document.getElementById('detailVillaAdults').textContent = guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : '');
-    document.getElementById('navGuests').textContent = parts.join(', ');
-    calculateTotal();
-    updateStayflexiUrl();
-}
-
 let checkIn = '', checkOut = '';
 
 function updateStayflexiUrl() {
@@ -959,60 +737,13 @@ function setAvailUI(status, pillLabel, badgeLabel, banner, data) {
     }
 }
 
-// Date pickers sync
-document.addEventListener('DOMContentLoaded', function() {
-    var onDateChange = function(dates) {
-        if (dates.length === 2) {
-            checkIn  = toLocalYMD(dates[0]);
-            checkOut = toLocalYMD(dates[1]);
-            updateStayflexiUrl();  // updates iframe src + availability banner
-            calculateTotal();
-            // Sync the generic (non-Stayflexi) pickers only.
-            // NOTE: dateRangePickerSidebar belongs to the Stayflexi sidebar variant —
-            // it is initialized and synced separately below, never here. Touching it
-            // from both systems was causing duplicate/stacked flatpickr calendars.
-            ['dateRangePicker', 'dateRangePickerSidebarCustom'].forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el && el._flatpickr) el._flatpickr.setDate([dates[0], dates[1]], false);
-            });
-        } else {
-            checkIn = ''; checkOut = '';
-            calculateTotal();
-        }
-    };
-    var cfg = { mode: 'range', minDate: 'today', dateFormat: 'Y-m-d', onChange: onDateChange };
-    // Will be reinitialised with blockedDates once property loads (see reinitDatePickers)
-    flatpickr('#dateRangePicker', cfg);
-    flatpickr('#dateRangePickerSidebarCustom', cfg);
-});
-
-// Call after villaData loads — rebuilds the generic (non-Stayflexi) pickers with blocked dates disabled.
-// dateRangePickerSF / dateRangePickerSidebar (Stayflexi) are handled separately in loadBookingPage.
-function reinitDatePickers(blockedDates) {
-    var onDateChange = function(dates) {
-        if (dates.length === 2) {
-            checkIn  = toLocalYMD(dates[0]);
-            checkOut = toLocalYMD(dates[1]);
-            updateStayflexiUrl();
-            calculateTotal();
-            ['dateRangePicker','dateRangePickerSidebarCustom'].forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el && el._flatpickr) el._flatpickr.setDate([dates[0], dates[1]], false);
-            });
-        } else { checkIn = ''; checkOut = ''; calculateTotal(); }
-    };
-    var cfg = {
-        mode: 'range', minDate: 'today', dateFormat: 'Y-m-d',
-        onChange: onDateChange,
-        disable: (blockedDates || []).map(function(d) { return d; })
-    };
-    ['dateRangePicker','dateRangePickerSidebarCustom'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        if (el._flatpickr) el._flatpickr.destroy();
-        flatpickr(el, cfg);
-    });
-}
+// NOTE: the old generic (non-Stayflexi) date pickers, price calculator, and
+// custom booking modal have been removed — every property now books through
+// Stayflexi, so dates and prices are always the live Stayflexi values
+// (see dateRangePickerSF / dateRangePickerSidebar + sfOnDatesChange below).
+// reinitDatePickers is kept as a no-op call target since loadBookingPage still
+// calls it before initialising the SF-specific pickers.
+function reinitDatePickers(blockedDates) { /* handled by SF pickers in loadBookingPage */ }
 
 function getParam(name) {
     var lower = name.toLowerCase();
@@ -1039,88 +770,6 @@ function getApiBase() {
     return (p && p !== '5000') ? 'http://' + h + ':5000/api' : '/api';
 }
 
-function calculateTotal() {
-    var pricePerNight = villaData ? (villaData.pricePerNight || 0) : 0;
-    var nights = (checkIn && checkOut) ? Math.max(0, Math.round((new Date(checkOut) - new Date(checkIn)) / 86400000)) : 0;
-    var base    = pricePerNight * nights;
-    var chefOn  = document.getElementById('addonChef')?.checked;
-    var fireOn  = document.getElementById('addonBonfire')?.checked;
-    var chef    = chefOn  ? 4500 * nights : 0;
-    var bonfire = fireOn  ? 1500 * nights : 0;
-    var subtotal = base + chef + bonfire;
-    var tax      = Math.round(subtotal * 0.18);
-    var total    = subtotal + tax;
-    var baseLabelText = nights > 0 ? 'Base (\u20b9' + pricePerNight.toLocaleString('en-IN') + ' \u00d7 ' + nights + ' night' + (nights !== 1 ? 's' : '') + ')' : 'Base Accommodation Fee';
-    ['', 'Modal'].forEach(function(suf) {
-        var lbl = document.getElementById('baseLabel' + suf);
-        if (lbl) lbl.textContent = baseLabelText;
-        var baseCostEl = document.getElementById('baseCost' + suf);
-        if (baseCostEl) baseCostEl.textContent = '\u20b9' + base.toLocaleString('en-IN');
-        var taxCostEl = document.getElementById('taxCost' + suf);
-        if (taxCostEl) taxCostEl.textContent = '\u20b9' + tax.toLocaleString('en-IN');
-        var grandTotalEl = document.getElementById('grandTotal' + suf);
-        if (grandTotalEl) grandTotalEl.textContent = '\u20b9' + total.toLocaleString('en-IN');
-        var chefRow    = document.getElementById('addonChefRow' + suf);
-        var bonfireRow = document.getElementById('addonBonfireRow' + suf);
-        if (chefRow)    { chefRow.classList.toggle('hidden', !chefOn);  document.getElementById('addonChefCost' + suf).textContent    = '\u20b9' + chef.toLocaleString('en-IN'); }
-        if (bonfireRow) { bonfireRow.classList.toggle('hidden', !fireOn); document.getElementById('addonBonfireCost' + suf).textContent = '\u20b9' + bonfire.toLocaleString('en-IN'); }
-    });
-}
-
-function openBookingModal() {
-    document.getElementById('bookingModal').classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeBookingModal() {
-    document.getElementById('bookingModal').classList.add('hidden');
-    document.body.style.overflow = '';
-}
-
-async function executePaymentGateway() {
-    var name    = document.getElementById('guestName')?.value.trim();
-    var email   = document.getElementById('guestEmail')?.value.trim();
-    var phone   = document.getElementById('guestPhone')?.value.trim();
-    var city    = document.getElementById('guestCity')?.value.trim() || '';
-    var state   = document.getElementById('guestState')?.value.trim() || '';
-    var purpose = document.getElementById('guestPurpose')?.value || '';
-    var requests= document.getElementById('guestSpecialRequests')?.value.trim() || '';
-    var idType  = document.getElementById('guestIdType')?.value || '';
-    var idNum   = document.getElementById('guestIdNumber')?.value.trim() || '';
-    if (!name || !email || !phone) { alert('Please fill in your name, email, and WhatsApp number before confirming.'); return; }
-    if (!checkIn || !checkOut)     { alert('Please select your check-in and check-out dates.'); return; }
-    if (!villaData)                { alert('Property data is still loading. Please wait a moment and try again.'); return; }
-    var nights      = Math.max(0, Math.round((new Date(checkOut) - new Date(checkIn)) / 86400000));
-    var pPN         = villaData.pricePerNight || 0;
-    var chefOn      = document.getElementById('addonChef')?.checked || false;
-    var bonfireOn   = document.getElementById('addonBonfire')?.checked || false;
-    var baseAmount  = pPN * nights;
-    var addonAmount = (chefOn ? 4500 * nights : 0) + (bonfireOn ? 1500 * nights : 0);
-    var taxAmount   = Math.round((baseAmount + addonAmount) * 0.18);
-    var totalAmount = baseAmount + addonAmount + taxAmount;
-    var btn = document.querySelector('[onclick="executePaymentGateway()"]');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving Booking\u2026'; }
-    try {
-        var res = await fetch(getApiBase() + '/bookings', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ property: villaData._id, propertyName: villaData.name,
-                guestName: name, guestEmail: email, guestPhone: phone,
-                guestCity: city, guestState: state, purposeOfVisit: purpose,
-                specialRequests: requests, idType: idType, idNumber: idNum,
-                checkIn, checkOut, nights, adults: guests.adults, children: guests.children, infants: guests.infants,
-                pricePerNight: pPN, baseAmount, addonChef: chefOn, addonBonfire: bonfireOn,
-                addonAmount, taxAmount, totalAmount, status: 'pending' })
-        });
-        var data = await res.json();
-        if (!res.ok || !data.success) throw new Error(data.message || 'Booking failed');
-        window.location.href = 'confirmation.html?bookingId=' + data.booking._id;
-    } catch (err) {
-        console.error('Booking error:', err);
-        alert('Could not save booking: ' + err.message + '\n\nPlease ensure your server is running.');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> Confirm & Pay Securely'; }
-    }
-}
-
 async function loadBookingPage() {
     var propertyId  = getParam('id');
     var urlCheckIn  = getParam('checkIn');
@@ -1128,19 +777,12 @@ async function loadBookingPage() {
     var urlAdults   = parseInt(getParam('adults')) || 2;
 
     guests.adults = Math.max(1, urlAdults);
-    document.getElementById('adultsCount').textContent       = guests.adults;
-    document.getElementById('guestCountSummary').textContent = guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : '') + ', ' + guests.children + ' Child' + (guests.children !== 1 ? 'ren' : '') + ', ' + guests.infants + ' Infant' + (guests.infants !== 1 ? 's' : '');
+    sfGuests.adults = guests.adults;
     document.getElementById('detailVillaAdults').textContent = guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : '');
     document.getElementById('navGuests').textContent         = guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : '');
 
     if (urlCheckIn && urlCheckOut) {
         checkIn = urlCheckIn; checkOut = urlCheckOut;
-        setTimeout(function() {
-            ['dateRangePicker','dateRangePickerSidebarCustom'].forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el && el._flatpickr) el._flatpickr.setDate([urlCheckIn, urlCheckOut]);
-            });
-        }, 150);
         updateAvailabilityBanner();
     }
 
@@ -1271,17 +913,14 @@ async function loadBookingPage() {
             }).join('');
         }
 
-        // ── Stayflexi: show API booking section or custom fallback ──
+        // ── All bookings now go through Stayflexi: dates, availability, and
+        // pricing are always the live Stayflexi values (no local/custom fallback). ──
         var sfSection = document.getElementById('stayflexiSection');
-        var customBookSection = document.getElementById('customBookSection');
         var sfHotelId = (villaData.stayflexi || '').trim();
         if (sfHotelId) {
             if (sfSection) sfSection.classList.remove('hidden');
-            if (customBookSection) customBookSection.classList.add('hidden');
-            var sidebarSF     = document.getElementById('sidebarStayflexi');
-            var sidebarCustom = document.getElementById('sidebarCustom');
-            if (sidebarSF)     sidebarSF.classList.remove('hidden');
-            if (sidebarCustom) sidebarCustom.classList.add('hidden');
+            var sidebarSF = document.getElementById('sidebarStayflexi');
+            if (sidebarSF) sidebarSF.classList.remove('hidden');
 
             // Init SF date pickers — synced to each other so main panel and
             // sidebar never show different dates (was the root cause of
@@ -1324,15 +963,17 @@ async function loadBookingPage() {
                 mobileBar.onclick = function() { scrollToSection('availability'); };
             }
         } else {
-            if (sfSection) sfSection.classList.add('hidden');
-            if (customBookSection) customBookSection.classList.remove('hidden');
-            var sidebarSF     = document.getElementById('sidebarStayflexi');
-            var sidebarCustom = document.getElementById('sidebarCustom');
-            if (sidebarSF)     sidebarSF.classList.add('hidden');
-            if (sidebarCustom) sidebarCustom.classList.remove('hidden');
+            // Property has no Stayflexi hotel ID configured — there is no other
+            // booking path anymore, so surface this clearly instead of silently
+            // showing a form that can't actually take a real booking.
+            console.error('[StellarStays] Property "' + (villaData.name || propertyId) + '" has no Stayflexi ID set — booking cannot proceed.');
+            var availBanner = document.getElementById('availBanner');
+            if (availBanner) {
+                availBanner.innerHTML = '<div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-red-50"><i class="fa-solid fa-triangle-exclamation text-red-500 text-2xl"></i></div>'
+                    + '<div class="flex-1"><div class="text-sm font-black text-red-700">Booking temporarily unavailable</div>'
+                    + '<div class="text-xs text-gray-500 mt-0.5">Online booking isn\'t set up for this property yet. Please contact us via WhatsApp to book.</div></div>';
+            }
         }
-
-        calculateTotal();
 
         // ── Live Stayflexi sync (only for SF-linked properties) ──
         // Auto-fetch on load: max guests + real-time blocked dates.
