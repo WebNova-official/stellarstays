@@ -89,6 +89,19 @@
 
         @media (max-width: 1023px) { .mobile-book-bar { display: flex; } }
         @media (min-width: 1024px) { .mobile-book-bar { display: none; } }
+
+        /* Booking modal: keep it centered + fully scrollable instead of pinned to
+           the bottom edge, so rotating the device (portrait <-> landscape) or short
+           viewport heights never clip the form or the submit button. */
+        #sfBookingModal { align-items: center; padding: 12px; }
+        #sfBookingModal > div { border-radius: 1rem; max-height: 92vh; }
+        @media (max-height: 560px) {
+            /* short / landscape phones — shrink the summary + counters so the form fits */
+            #sfBookingModal > div { max-height: 96vh; }
+            #sfBookingModal h3 { font-size: 0.95rem; }
+            #sfBookingModal .p-4 { padding: 0.65rem; }
+            #sfBookingModal .space-y-4 > * + * { margin-top: 0.5rem; }
+        }
     </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -111,9 +124,9 @@
         <span id="navGuests" class="text-gray-400 text-xs shrink-0"></span>
     </div>
     <div class="flex items-center gap-3 shrink-0 ml-auto">
-        <span class="verified-badge text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-full hidden sm:flex items-center gap-1.5">
-            <i class="fa-solid fa-shield-halved text-emerald-600"></i> Verified Luxury Partner
-        </span>
+        <button onclick="scrollToSection('availability')" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-full hidden sm:flex items-center gap-1.5 transition shadow-sm">
+            <i class="fa-solid fa-lock text-[10px]"></i> Book Now
+        </button>
         <a href="https://wa.me/918655444465" target="_blank" class="bg-emerald-500 text-white w-9 h-9 rounded-full flex items-center justify-center text-base hover:bg-emerald-600 transition shadow-sm">
             <i class="fa-brands fa-whatsapp"></i>
         </a>
@@ -224,10 +237,10 @@
 
     <!-- Tab Content -->
     <div class="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24 lg:pb-6">
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div class="grid grid-cols-1 gap-8">
 
             <!-- LEFT: Tab Content -->
-            <div class="lg:col-span-8 w-full">
+            <div class="w-full">
 
                 <!-- OVERVIEW -->
                 <div id="tab-overview" class="space-y-6 scroll-mt-32">
@@ -384,45 +397,6 @@
                     <div class="space-y-2.5" id="faqContainer"></div>
                 </div>
 
-            </div>
-
-            <!-- RIGHT: Sticky mini booking box, desktop only -->
-            <div class="hidden lg:block lg:col-span-4">
-                <div class="sticky-sidebar bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
-                    <div class="p-4 border-b border-gray-100">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="text-2xl font-black text-[#0f1f3d]" style="font-family:'Playfair Display',serif;">
-                                    <span id="sideRatePrint">&#8377;0</span><span class="text-sm font-normal text-gray-400"> / night</span>
-                                </div>
-                                <div class="text-xs text-amber-600 font-semibold mt-1 flex items-center gap-1">
-                                    <i class="fa-solid fa-bolt"></i> Direct Booking &middot; Zero Commission
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-lg font-bold text-[#0f1f3d] flex items-center gap-1 justify-end">
-                                    <i class="fa-solid fa-star text-amber-500 text-sm"></i><span id="sideRating">0.0</span>
-                                </div>
-                                <div class="text-[10px] text-gray-400 font-medium">Excellent</div>
-                            </div>
-                        </div>
-                        <div class="mt-2 pt-2 border-t border-gray-100">
-                            <span id="sideAvailBadge" class="text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 avail-loading" style="width:fit-content;">
-                                <span class="status-dot w-1.5 h-1.5 rounded-full bg-gray-400 inline-block"></span>
-                                Select dates to check availability
-                            </span>
-                        </div>
-                    </div>
-                    <div class="p-4 space-y-3">
-                        <button onclick="scrollToSection('availability')" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
-                            <i class="fa-solid fa-lock text-xs"></i> Book Now
-                        </button>
-                        <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
-                            <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-                            Live rates &amp; instant confirmation
-                        </p>
-                    </div>
-                </div>
             </div>
 
         </div>
