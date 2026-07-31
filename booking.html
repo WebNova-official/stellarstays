@@ -90,6 +90,26 @@
         @media (max-width: 1023px) { .mobile-book-bar { display: flex; } }
         @media (min-width: 1024px) { .mobile-book-bar { display: none; } }
 
+        /* Calendar: green = available, red = booked/unavailable. Selection stays
+           brand amber so the chosen range is still obviously distinct from both. */
+        .flatpickr-day:not(.flatpickr-disabled):not(.prevMonthDay):not(.nextMonthDay) {
+            background: #ecfdf5; color: #065f46; border-color: #a7f3d0;
+        }
+        .flatpickr-day:not(.flatpickr-disabled):not(.prevMonthDay):not(.nextMonthDay):hover {
+            background: #a7f3d0; color: #065f46; border-color: #6ee7b7;
+        }
+        .flatpickr-day.flatpickr-disabled {
+            background: #fef2f2; color: #fca5a5; border-color: #fecaca; text-decoration: line-through;
+        }
+        .flatpickr-day.today { border-color: #f59e0b; }
+        .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange,
+        .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover {
+            background: #f59e0b; color: #fff; border-color: #f59e0b;
+        }
+        .flatpickr-day.inRange {
+            background: #fde68a; color: #78350f; border-color: #fde68a; box-shadow: none;
+        }
+
         /* Booking modal: keep it centered + fully scrollable instead of pinned to
            the bottom edge, so rotating the device (portrait <-> landscape) or short
            viewport heights never clip the form or the submit button. */
@@ -327,6 +347,10 @@
                             <div>
                                 <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Select Dates</label>
                                 <input type="text" id="dateRangePickerMain" placeholder="Check-in &#8594; Check-out" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-[#fdf8f0]">
+                                <div class="flex items-center gap-3 mt-1.5 text-[10px] font-semibold text-gray-400">
+                                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:#a7f3d0;"></span> Available</span>
+                                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:#fca5a5;"></span> Booked</span>
+                                </div>
                             </div>
 
                             <!-- Check-in / check-out time slots for the selected dates -->
@@ -1062,9 +1086,10 @@ async function sfOnDatesChange(cin, cout) {
 
         if (!data.roomTypeMap || !Object.keys(data.roomTypeMap).length) {
             document.getElementById('sfRoomList').innerHTML =
-                '<div class="text-sm text-red-400 font-semibold text-center py-4">No rooms available for these dates.</div>'
-                + '<div style="font-family:monospace;font-size:10px;white-space:pre-wrap;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;margin-top:8px;max-height:260px;overflow:auto;color:#991b1b;">'
-                + '<strong>DEBUG — request:</strong>\n' + sfPath + '\n\n<strong>DEBUG — response:</strong>\n' + JSON.stringify(data, null, 2).replace(/</g,'&lt;')
+                '<div class="text-center py-6">'
+                + '<i class="fa-solid fa-calendar-xmark text-2xl text-red-300 mb-2"></i>'
+                + '<div class="text-sm font-bold text-red-500">These dates aren\'t available.</div>'
+                + '<div class="text-xs text-gray-400 mt-1">Please select different dates and try again.</div>'
                 + '</div>';
             return;
         }
