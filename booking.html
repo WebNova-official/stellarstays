@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
@@ -201,10 +202,6 @@
         <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
             <div class="flex-1">
                 <div class="flex flex-wrap items-center gap-2 mb-2">
-                    <span class="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                        <i class="fa-solid fa-bolt"></i> Direct Booking
-                    </span>
-                    <span class="text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-full">Zero Commission</span>
                     <span id="availabilityPill" class="avail-loading text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
                         <span class="status-dot w-2 h-2 rounded-full bg-gray-400 inline-block"></span>
                         <span id="availabilityText">Checking availability&#8230;</span>
@@ -1203,108 +1200,112 @@ async function executeSfBooking() {
     var country   = document.getElementById('sfGuestCountry')?.value.trim() || 'India';
     if (!firstName || !email || !phone) { alert('Please fill in your name, email, and phone.'); return; }
 
-    var hotelId = villaData.stayflexi.trim();
-
     var btn = document.getElementById('sfBookSubmitBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Confirming…';
 
-    // Every booking goes through Razorpay — there is no pay-at-hotel path anymore.
-    // Docs: this is created as an "enquiry" (isEnquiry: true) which Stayflexi
-    // auto-confirms once the guest completes payment on the Razorpay redirect below.
-    var payload = {
-        checkin: sfSelectedRoom.checkin,
-        checkout: sfSelectedRoom.checkout,
-        hotelId: parseInt(hotelId),
-        bookingStatus: 'CONFIRMED',
-        bookingSource: 'STAYFLEXI_OD',
-        roomStays: [{
-            numAdults: sfGuests.adults,
-            numChildren: sfGuests.children,
-            numChildren1: 0,
-            roomTypeId: sfSelectedRoom.roomTypeId,
-            ratePlanId: sfSelectedRoom.ratePlanId
-        }],
-        ctaId: '',
-        customerDetails: {
-            firstName: firstName,
-            lastName: lastName || '',
-            emailId: email,
-            phoneNumber: '+91' + phone.replace(/\D/g,''),
-            country: country, city: city, zipcode: zipcode, address: address, state: state
-        },
-        paymentDetails: {
-            sellRate: sfSelectedRoom.price,
-            roomRate: sfSelectedRoom.price,
-            payAtHotel: false
-        },
-        promoInfo: {}, specialRequests: '',
-        requestToBook: false, isAddOnPresent: true, posOrderList: [],
-        isInsured: false, refundableBookingFee: 0,
-        appliedPromocode: '', promoAmount: 0, bookingFees: 0,
-        isEnquiry: true, isExternalPayment: false
-    };
-
-    try {
-        var res = await fetch(getApiBase() + '/sf/raw?path=' + encodeURIComponent('/core/api/v1/beservice/perform-booking'), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
-        var data = await res.json();
-        if (!data.status) throw new Error(data.message || 'Booking failed');
-
-        // Use the ISO (YYYY-MM-DD) dates for this math, not sfSelectedRoom.checkin/checkout —
-        // those are DD-MM-YYYY (Stayflexi's format), which `new Date(...)` parses inconsistently
-        // (often as Invalid Date, or silently misread as MM-DD-YYYY), which was making every
-        // booking record itself as 1 night regardless of the actual stay length.
-        var nights = Math.max(1, Math.round((new Date(sfSelectedRoom.checkoutISO) - new Date(sfSelectedRoom.checkinISO)) / 86400000)) || 1;
-
-        // ── Save a local record so this booking shows up on the Admin Dashboard / Bookings tab. ──
-        // (Stayflexi only stores the booking on its own side; without this it's invisible
-        // anywhere in the admin panel except by manually looking up the bookingId.)
-        try {
-            await fetch(getApiBase() + '/bookings', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    property: villaData._id, propertyName: villaData.name,
-                    guestName: (firstName + ' ' + lastName).trim(), guestEmail: email, guestPhone: phone,
-                    guestCity: city, guestState: state, specialRequests: '',
-                    checkIn: sfSelectedRoom.checkin, checkOut: sfSelectedRoom.checkout, nights: nights,
-                    adults: sfGuests.adults, children: sfGuests.children, infants: 0,
-                    pricePerNight: villaData.pricePerNight || 0,
-                    baseAmount: sfSelectedRoom.price, addonAmount: 0, taxAmount: 0,
-                    totalAmount: sfSelectedRoom.price,
-                    status: 'pending',
-                    source: 'stayflexi', stayflexiBookingId: data.bookingId, stayflexiHotelId: hotelId,
-                    roomTypeId: sfSelectedRoom.roomTypeId, ratePlanId: sfSelectedRoom.ratePlanId
-                })
-            });
-        } catch (localErr) {
-            // Don't block the guest's booking/payment on this — just log it. The booking is
-            // already an enquiry on Stayflexi regardless of whether this local save works.
-            console.warn('[SF DEBUG] Booking succeeded on Stayflexi but failed to save locally — it will not show on the Admin Dashboard yet.', localErr.message);
-        }
-
-        // Send the guest straight to Razorpay (via Stayflexi's hosted payment redirect)
-        // to actually collect payment and auto-confirm the booking.
-        var thisPageUrl = window.location.origin + window.location.pathname;
-        var successUrl = window.location.origin + '/confirmation.html?sfBookingId=' + encodeURIComponent(data.bookingId)
-            + '&property=' + encodeURIComponent(villaData.name)
-            + '&total=' + sfSelectedRoom.price
-            + '&status=confirmed';
-        var cancelUrl = thisPageUrl + window.location.search; // back to this same booking page
-
-        var paymentLink = 'https://bookingengine.stayflexi.com/redirect-payment-gateway/'
-            + encodeURIComponent(data.bookingId)
-            + '?hotel_id=' + encodeURIComponent(hotelId)
-            + '&redirect_url=' + encodeURIComponent(successUrl)
-            + '&cancel_url=' + encodeURIComponent(cancelUrl);
-
-        window.location.href = paymentLink;
-    } catch(err) {
-        alert('Booking failed: ' + err.message);
+    function resetBtn() {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">Confirm &amp; Pay via Razorpay</span>';
     }
+
+    // Stayflexi is only used above this point to fetch room/rate/availability data.
+    // Booking + payment are entirely ours: save to our own DB, take payment
+    // through Razorpay directly (no Stayflexi hosted redirect involved), then
+    // mark it paid once Razorpay confirms the signature server-side.
+
+    // Use the ISO (YYYY-MM-DD) dates for this math, not sfSelectedRoom.checkin/checkout —
+    // those are DD-MM-YYYY (Stayflexi's format), which `new Date(...)` parses inconsistently
+    // (often as Invalid Date, or silently misread as MM-DD-YYYY), which was making every
+    // booking record itself as 1 night regardless of the actual stay length.
+    var nights = Math.max(1, Math.round((new Date(sfSelectedRoom.checkoutISO) - new Date(sfSelectedRoom.checkinISO)) / 86400000)) || 1;
+
+    var bookingId;
+    try {
+        var bookRes = await fetch(getApiBase() + '/bookings', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                property: villaData._id, propertyName: villaData.name,
+                guestName: (firstName + ' ' + lastName).trim(), guestEmail: email, guestPhone: phone,
+                checkIn: sfSelectedRoom.checkin, checkOut: sfSelectedRoom.checkout, nights: nights,
+                adults: sfGuests.adults, children: sfGuests.children, infants: 0,
+                pricePerNight: villaData.pricePerNight || 0,
+                baseAmount: sfSelectedRoom.price, addonAmount: 0, taxAmount: 0,
+                totalAmount: sfSelectedRoom.price, amount: sfSelectedRoom.price,
+                status: 'Pending', paid: false
+            })
+        });
+        if (bookRes.status === 409) {
+            var conflict = await bookRes.json();
+            alert('❌ ' + conflict.message);
+            resetBtn();
+            return;
+        }
+        if (!bookRes.ok) {
+            var berr = await bookRes.json().catch(function(){ return {}; });
+            throw new Error(berr.message || 'Could not save booking');
+        }
+        var bookData = await bookRes.json();
+        bookingId = bookData.booking?._id || bookData.bookingId;
+    } catch (err) {
+        alert('Booking failed: ' + err.message);
+        resetBtn();
+        return;
+    }
+
+    // Create the Razorpay order server-side (needs the secret key, so it can't happen in-browser).
+    var order;
+    try {
+        var orderRes = await fetch(getApiBase() + '/payments/create-order', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId: bookingId })
+        });
+        order = await orderRes.json();
+        if (!order.success) throw new Error(order.message || 'Could not start payment');
+    } catch (err) {
+        alert('Payment setup failed: ' + err.message);
+        resetBtn();
+        return;
+    }
+
+    // Open Razorpay Checkout directly — no redirect to any Stayflexi page.
+    var rzp = new Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: 'StellarStays',
+        description: villaData.name,
+        prefill: { name: (firstName + ' ' + lastName).trim(), email: email, contact: phone },
+        theme: { color: '#0f1f3d' },
+        handler: async function (response) {
+            try {
+                var verifyRes = await fetch(getApiBase() + '/payments/verify', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bookingId: bookingId,
+                        razorpay_order_id: response.razorpay_order_id,
+                        razorpay_payment_id: response.razorpay_payment_id,
+                        razorpay_signature: response.razorpay_signature
+                    })
+                });
+                var verifyData = await verifyRes.json();
+                if (!verifyData.success) throw new Error(verifyData.message || 'Payment verification failed');
+                window.location.href = 'confirmation.html?bookingId=' + encodeURIComponent(bookingId);
+            } catch (err) {
+                alert('Payment succeeded but confirmation failed: ' + err.message + '\n\nPlease contact us with your payment ID: ' + response.razorpay_payment_id);
+                resetBtn();
+            }
+        },
+        modal: {
+            ondismiss: function () { resetBtn(); }
+        }
+    });
+    rzp.on('payment.failed', function (resp) {
+        alert('Payment failed: ' + (resp.error && resp.error.description ? resp.error.description : 'Please try again.'));
+        resetBtn();
+    });
+    rzp.open();
 }
 
 window.addEventListener('load', loadBookingPage);
