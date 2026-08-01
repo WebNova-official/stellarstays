@@ -46,6 +46,15 @@ const bookingSchema = new mongoose.Schema({
     razorpayOrderId:    { type: String },
     razorpayPaymentId:  { type: String },
 
+    // Stayflexi (inventory sync) — the booking is created there as an
+    // "enquiry" up front so the room is held, then confirmed via
+    // recordExternalPayment once our own Razorpay payment succeeds. This is
+    // what makes the dates show as booked on Stayflexi's calendar.
+    stayflexiBookingId: { type: String },
+    stayflexiHotelId:   { type: String },
+    roomTypeId:         { type: String },
+    ratePlanId:         { type: String },
+
 }, { timestamps: true });
 
 bookingSchema.pre("save", async function () {
