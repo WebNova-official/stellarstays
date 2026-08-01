@@ -9,6 +9,7 @@ const compression  = require("compression");
 const propertyRoutes = require("./routes/propertyRoutes");
 const bookingRoutes  = require("./routes/bookingRoutes");
 const sfRoutes        = require("./routes/sfRoutes");
+const paymentRoutes   = require("./routes/paymentRoutes");
 
 const app = express();
 
@@ -73,6 +74,7 @@ app.get("/api/config", async (req, res) => {
 app.use("/api/properties", propertyRoutes);
 app.use("/api/bookings",   bookingRoutes);
 app.use("/api/sf",         sfRoutes);
+app.use("/api/payments",   paymentRoutes);
 
 // ── Cloudinary image upload endpoint ──
 const cloudinary = require("cloudinary").v2;
