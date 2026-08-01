@@ -1511,10 +1511,47 @@ async function importSfHotel(hotel) {
         var pad = function(n) { return String(n).padStart(2, '0'); };
         var fmt = function(d, time) { return pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear() + ' ' + time; };
         var extractRate = function(avail) {
-            if (!avail || !avail.roomTypeMap) return 0;
-            var firstRoom = Object.values(avail.roomTypeMap)[0];
-            var combo = firstRoom && firstRoom.combos && firstRoom.combos[0];
-            return (combo && combo.rates && combo.rates[0] && combo.rates[0].price) || 0;
+            if (!avail) return 0;
+            // ── Primary source: SF returns the lowest available rate for the
+            // requested dates directly at the top level (rate / actualRate).
+            // This reflects availability across ALL room types, not just one.
+            if (avail.rate) return avail.rate;
+            if (avail.actualRate) return avail.actualRate;
+            // ── Fallback: dig into roomTypeMap. Only used if SF omits the
+            // top-level fields. NOTE: this checks every room type, not just
+            // the first — the first one alone may be stop-sold/restricted
+            // for the requested dates (common on weekends), even though
+            // other room types are available.
+            if (!avail.roomTypeMap) return 0;
+            for (var rtId in avail.roomTypeMap) {
+                var room = avail.roomTypeMap[rtId];
+                var combo = room && room.combos && room.combos[0];
+                var price = combo && combo.rates && combo.rates[0] && combo.rates[0].price;
+                if (price) return price;
+            }
+            return 0;
+        };
+        // ── When no rate comes back, figure out WHY so the warning banner is
+        // actionable instead of generic.
+        var diagnoseNoRate = function(avail) {
+            if (!avail) return 'Stayflexi returned no data for this date.';
+            if (!avail.roomTypeMap || !Object.keys(avail.roomTypeMap).length) {
+                return 'No room types returned by Stayflexi for this date — likely a stop-sell, closed-on-arrival, or minimum-length-of-stay restriction set on this property for that day.';
+            }
+            var sawCombo = false;
+            for (var rtId in avail.roomTypeMap) {
+                var room = avail.roomTypeMap[rtId];
+                if (room && room.combos && room.combos.length) {
+                    sawCombo = true;
+                    if (room.combos[0].availableRooms === 0) {
+                        return 'Room type "' + (room.roomTypeName || rtId) + '" is sold out for this date.';
+                    }
+                }
+            }
+            if (!sawCombo) {
+                return 'No availability combos returned — likely a stop-sell, closed-on-arrival, or minimum-length-of-stay restriction for that day (common for Saturday check-ins). Check the room\u2019s restrictions in the Stayflexi dashboard/calendar.';
+            }
+            return 'No sellable rate returned by Stayflexi for this date.';
         };
         // Find the next weekday night (Tue checkin) and the next Saturday night,
         // so the weekday/weekend rates we pull are actually representative.
@@ -1539,11 +1576,17 @@ async function importSfHotel(hotel) {
             if (weekdayRate) {
                 document.getElementById('f_pricePerNight').value = Math.round(weekdayRate);
             } else if (priceWarning) {
+                var weekdayReason = diagnoseNoRate(weekdayAvail);
+                console.warn('Weekday rate not returned:', weekdayReason, weekdayAvail);
+                priceWarning.textContent = '⚠ Weekday rate: ' + weekdayReason + ' Enter manually.';
                 priceWarning.classList.remove('hidden');
             }
         } catch (e) {
             console.warn('Could not fetch live weekday rate, leave price for manual entry:', e.message);
-            if (priceWarning) priceWarning.classList.remove('hidden');
+            if (priceWarning) {
+                priceWarning.textContent = '⚠ Weekday rate: Stayflexi API call failed (' + e.message + '). Enter manually.';
+                priceWarning.classList.remove('hidden');
+            }
         }
 
         try {
@@ -1555,11 +1598,19 @@ async function importSfHotel(hotel) {
             if (weekendRate) {
                 document.getElementById('f_weekendRate').value = Math.round(weekendRate);
             } else if (priceWarning) {
+                var weekendReason = diagnoseNoRate(weekendAvail);
+                console.warn('Weekend rate not returned:', weekendReason, weekendAvail);
+                var existing = priceWarning.textContent && !priceWarning.classList.contains('hidden') ? priceWarning.textContent + ' ' : '⚠ ';
+                priceWarning.textContent = existing + 'Weekend rate: ' + weekendReason + ' Enter manually.';
                 priceWarning.classList.remove('hidden');
             }
         } catch (e) {
             console.warn('Could not fetch live weekend rate, leave weekend price for manual entry:', e.message);
-            if (priceWarning) priceWarning.classList.remove('hidden');
+            if (priceWarning) {
+                var existingErr = priceWarning.textContent && !priceWarning.classList.contains('hidden') ? priceWarning.textContent + ' ' : '⚠ ';
+                priceWarning.textContent = existingErr + 'Weekend rate: Stayflexi API call failed (' + e.message + '). Enter manually.';
+                priceWarning.classList.remove('hidden');
+            }
         }
     } catch(e) {
         // Basic import without full content
