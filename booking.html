@@ -3,1722 +3,1340 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StellarStays — Admin Panel</title>
+    <title>StellarStays | Property Details & Booking</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-// ═══════════════════════════════════════
-// DASHBOARD
-// ═══════════════════════════════════════
-
-function populateMonthSelector() {
-    var sel = document.getElementById('dash_report_month');
-    if (!sel) return;
-    var now = new Date();
-    sel.innerHTML = '';
-    for (var i = 0; i < 12; i++) {
-        var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        var label = d.toLocaleString('default', { month: 'long', year: 'numeric' });
-        var val = (d.getFullYear()) + '-' + String(d.getMonth() + 1).padStart(2, '0');
-        var opt = document.createElement('option');
-        opt.value = val; opt.textContent = label;
-        if (i === 0) opt.selected = true;
-        sel.appendChild(opt);
-    }
-}
-
-async function loadDashboard() {
-    loadDashboardActiveVillas();
-    loadDashboardCustomBookings();
-    loadVillaMonthlyReport();
-}
-
-// ── Active Villas KPI (from StellarStays' own property list, not Stayflexi) ──
-async function loadDashboardActiveVillas() {
-    var el = document.getElementById('dash_active_villas');
-    try {
-        var properties = await fetch(API + '/properties').then(function(r){ return r.json(); });
-        var active = properties.filter(function(p) { return p.status === 'Active'; }).length;
-        el.textContent = active;
-    } catch(e) {
-        el.textContent = '—';
-    }
-}
-
-// ── Monthly per-villa report ──
-async function loadVillaMonthlyReport() {
-    var el = document.getElementById('dash_villa_report');
-    var sel = document.getElementById('dash_report_month');
-    if (!sel) return;
-    var monthVal = sel.value; // YYYY-MM
-    var year = parseInt(monthVal.split('-')[0]);
-    var month = parseInt(monthVal.split('-')[1]);
-    el.innerHTML = '<div class="text-sm text-gray-400 text-center py-6 animate-pulse">Loading report…</div>';
-
-    try {
-        if (!SF_GROUP_ID) { el.innerHTML = '<div class="text-sm text-gray-400 text-center py-6">SF Group ID not configured in .env</div>'; return; }
-        var hotels = await sfFetch('/core/api/v1/beservice/grouphotels?groupId=' + SF_GROUP_ID);
-        if (!hotels || !hotels.length) { el.innerHTML = '<div class="text-sm text-gray-400 text-center py-6">No hotels found.</div>'; return; }
-
-        var fromDate = formatDDMMYYYY(new Date(year, month-1, 1));
-        var toDate   = formatDDMMYYYY(new Date(year, month, 0));
-
-        var calResults = await Promise.allSettled(hotels.map(function(h) {
-            return sfFetch('/core/api/v1/beservice/hotelcalendar/?hotelId=' + h.hotelId + '&fromDate=' + fromDate + '&toDate=' + toDate);
-        }));
-
-        var totalMonthRev = 0;
-        var html = '<div class="overflow-x-auto"><table class="w-full text-sm">'
-            + '<thead><tr class="border-b border-gray-100">'
-            + '<th class="text-left py-2 px-3 text-xs font-bold text-gray-400 uppercase">Villa</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Nights Booked</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Available</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Occupancy %</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Est. Revenue</th>'
-            + '</tr></thead><tbody>';
-
-        hotels.forEach(function(h, i) {
-            var cal = calResults[i].status === 'fulfilled' ? calResults[i].value : null;
-            var booked = 0, avail = 0, total = 0;
-            if (cal && cal.aggregate) {
-                (cal.aggregate.bookedRoomCount || []).forEach(function(d) { booked += d.count||0; });
-                (cal.aggregate.availableRoomCount || []).forEach(function(d) { avail += d.count||0; });
-                (cal.aggregate.totalRoomCount || []).forEach(function(d) { total += d.count||0; });
-            }
-            var occ = total > 0 ? Math.round((booked / total) * 100) : 0;
-            // Estimate revenue from room rates if available
-            var estRev = 0;
-            if (cal && cal.allRoomTypes) {
-                cal.allRoomTypes.forEach(function(rt) {
-                    (rt.ratePlans || []).forEach(function(rp) {
-                        (rp.rateInfoMap || []).forEach(function(day) {
-                            var price = day.occupancyPricing && (day.occupancyPricing['1'] || 0);
-                            // count booked rooms that day
-                            var dayBooked = 0;
-                            (rt.bookedRoomCount || []).forEach(function(bd) { if (bd.date === day.date) dayBooked = bd.count||0; });
-                            estRev += price * dayBooked;
-                        });
-                    });
-                });
-            }
-            totalMonthRev += estRev;
-            var occColor = occ >= 70 ? 'text-emerald-600' : occ >= 40 ? 'text-amber-600' : 'text-red-500';
-            html += '<tr class="border-b border-gray-50 hover:bg-gray-50">'
-                + '<td class="py-3 px-3 font-semibold text-[#0f1f3d]">' + h.hotelName + '<div class="text-xs text-gray-400 font-normal">' + h.hotelCity + '</div></td>'
-                + '<td class="py-3 px-3 text-right font-bold">' + booked + '</td>'
-                + '<td class="py-3 px-3 text-right text-gray-400">' + avail + '</td>'
-                + '<td class="py-3 px-3 text-right font-bold ' + occColor + '">' + occ + '%</td>'
-                + '<td class="py-3 px-3 text-right font-black text-[#0f1f3d]">' + (estRev > 0 ? '₹' + estRev.toLocaleString('en-IN') : '<span class=\"text-gray-300\">—</span>') + '</td>'
-                + '</tr>';
-        });
-
-        html += '</tbody>';
-        if (totalMonthRev > 0) {
-            html += '<tfoot><tr class="border-t-2 border-gray-200"><td colspan="4" class="py-3 px-3 font-black text-[#0f1f3d]">Total</td><td class="py-3 px-3 text-right font-black text-indigo-600 text-base">₹' + totalMonthRev.toLocaleString('en-IN') + '</td></tr></tfoot>';
-        }
-        html += '</table></div>';
-
-        el.innerHTML = html;
-
-        // Update month revenue KPI
-        document.getElementById('dash_month_rev').textContent = totalMonthRev > 0 ? '₹' + totalMonthRev.toLocaleString('en-IN') : '—';
-
-    } catch(e) {
-        el.innerHTML = '<div class="text-sm text-red-400 text-center py-6">Error: ' + e.message + '</div>';
-    }
-}
-
-// ── Custom bookings (StellarStays DB) ──
-async function loadDashboardCustomBookings() {
-    var el = document.getElementById('dash_custom_bookings');
-    try {
-        var bookings = await fetch(API + '/bookings').then(function(r){ return r.json(); });
-        if (!bookings.length) { el.innerHTML = '<div class="text-sm text-gray-400 text-center py-6">No custom bookings yet.</div>'; return; }
-
-        var today = new Date().toISOString().split('T')[0];
-        var todayBookings = bookings.filter(function(b) { return b.createdAt && b.createdAt.startsWith(today); });
-        var todayRev = todayBookings.reduce(function(s, b) { return s + (b.totalPrice || 0); }, 0);
-        var monthRev = bookings.filter(function(b) {
-            var d = b.createdAt ? new Date(b.createdAt) : null;
-            return d && d.getMonth() === new Date().getMonth() && d.getFullYear() === new Date().getFullYear();
-        }).reduce(function(s, b) { return s + (b.totalPrice || 0); }, 0);
-
-        document.getElementById('dash_today_rev').textContent = '₹' + todayRev.toLocaleString('en-IN');
-        document.getElementById('dash_total_bookings').textContent = bookings.length;
-        if (monthRev > 0) document.getElementById('dash_month_rev').textContent = '₹' + monthRev.toLocaleString('en-IN');
-
-        // Table of recent bookings
-        var html = '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b border-gray-100">'
-            + '<th class="text-left py-2 px-3 text-xs font-bold text-gray-400 uppercase">Guest</th>'
-            + '<th class="text-left py-2 px-3 text-xs font-bold text-gray-400 uppercase">Property</th>'
-            + '<th class="text-left py-2 px-3 text-xs font-bold text-gray-400 uppercase">Check-In</th>'
-            + '<th class="text-left py-2 px-3 text-xs font-bold text-gray-400 uppercase">Check-Out</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Amount</th>'
-            + '<th class="text-center py-2 px-3 text-xs font-bold text-gray-400 uppercase">Status</th>'
-            + '</tr></thead><tbody>';
-
-        bookings.slice(0,20).forEach(function(b) {
-            var statusColor = b.status === 'confirmed' ? 'text-emerald-600 bg-emerald-50' : b.status === 'cancelled' ? 'text-red-500 bg-red-50' : 'text-amber-600 bg-amber-50';
-            html += '<tr class="border-b border-gray-50 hover:bg-gray-50">'
-                + '<td class="py-3 px-3"><div class="font-semibold text-[#0f1f3d]">' + (b.guestName || b.firstName || '—') + '</div>'
-                + '<div class="text-xs text-gray-400">' + (b.email || '') + '</div>'
-                + '<div class="text-xs text-gray-400">' + (b.phone || '') + '</div></td>'
-                + '<td class="py-3 px-3 text-gray-600">' + (b.propertyName || b.property || '—') + '</td>'
-                + '<td class="py-3 px-3 text-gray-500 text-xs">' + (b.checkIn || '—') + '</td>'
-                + '<td class="py-3 px-3 text-gray-500 text-xs">' + (b.checkOut || '—') + '</td>'
-                + '<td class="py-3 px-3 text-right font-bold text-[#0f1f3d]">' + (b.totalPrice ? '₹' + Number(b.totalPrice).toLocaleString('en-IN') : '—') + '</td>'
-                + '<td class="py-3 px-3 text-center"><span class="text-xs font-bold px-2 py-0.5 rounded-full ' + statusColor + '">' + (b.status || 'pending') + '</span></td>'
-                + '</tr>';
-        });
-
-        html += '</tbody></table></div>';
-        el.innerHTML = html;
-    } catch(e) {
-        el.innerHTML = '<div class="text-sm text-red-400 text-center py-6">Error loading bookings: ' + e.message + '</div>';
-    }
-}
-
-// ── Date helpers ──
-function formatDDMMYYYY(d) {
-    return String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear();
-}
-function formatYYYYMMDD(d) {
-    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-}
-
-
-// ── Property View Modal ──
-function closePropertyViewModal() {
-    document.getElementById('propertyViewModal').classList.add('hidden');
-    document.body.style.overflow = '';
-}
-
-async function viewProperty(id) {
-    document.getElementById('propertyViewModal').classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
-    document.getElementById('propertyViewBody').innerHTML = '<div class="text-center py-12 text-gray-400 animate-pulse text-sm">Loading…</div>';
-    try {
-        var p = await fetch(API + '/properties/' + id).then(function(r){ return r.json(); });
-        document.getElementById('viewModalTitle').textContent = p.name || 'Property';
-        document.getElementById('viewEditBtn').onclick = function() { closePropertyViewModal(); editProperty(id); };
-
-        // Gallery strip
-        var allImgs = [p.image].concat(p.gallery || []).filter(Boolean);
-        var galleryHtml = allImgs.length
-            ? '<div class="flex gap-2 overflow-x-auto pb-1">' + allImgs.map(function(u, i) {
-                return '<img src="' + u + '" class="h-36 rounded-xl object-cover shrink-0 border border-gray-100' + (i===0?' ring-2 ring-amber-400':'') + '" style="width:200px;" onerror="this.style.display=\'none\'">';
-              }).join('') + '</div>'
-            : '<div class="text-xs text-gray-300">No images</div>';
-
-        // Videos
-        var videosHtml = '';
-        if (p.videos && p.videos.length) {
-            videosHtml = '<div><div class="section-title">Videos</div><div class="flex gap-3 flex-wrap">'
-                + p.videos.map(function(v) {
-                    var isYT = v.includes('youtube.com') || v.includes('youtu.be');
-                    if (isYT) {
-                        var ytId = v.split('v=')[1] || v.split('/').pop();
-                        return '<iframe width="260" height="150" src="https://www.youtube.com/embed/' + ytId + '" frameborder="0" allowfullscreen class="rounded-xl"></iframe>';
-                    }
-                    return '<video src="' + v + '" controls class="rounded-xl bg-black" style="height:150px;max-width:260px;" preload="none"></video>';
-                }).join('') + '</div></div>';
-        }
-
-        // Amenities
-        var amenHtml = (p.amenities||[]).length
-            ? (p.amenities).map(function(a){ return '<span class="tag-chip">' + a + '</span>'; }).join('')
-            : '<span class="text-xs text-gray-300">None</span>';
-
-        // Info grid
-        var sfBadge = p.stayflexi
-            ? '<span class="sf-badge"><i class="fa-solid fa-bolt text-emerald-600 mr-1 text-[9px]"></i>' + p.stayflexi + '</span>'
-            : '<span class="no-sf-badge">Custom Form</span>';
-        var statusColor = p.status === 'Active' ? 'text-emerald-700 bg-emerald-50' : 'text-red-600 bg-red-50';
-
-        document.getElementById('propertyViewBody').innerHTML =
-            // Images
-            '<div>' + galleryHtml + '</div>'
-
-            // Key info row
-            + '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
-            + kpi('Price / Night', '₹' + (p.pricePerNight||0).toLocaleString('en-IN'))
-            + kpi('Weekend Rate', '₹' + (p.weekendRate||p.pricePerNight||0).toLocaleString('en-IN'))
-            + kpi('Guests', p.guests || '—')
-            + kpi('Bedrooms', p.bedrooms || '—')
-            + '</div>'
-
-            + '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
-            + kpi('Type', p.type || 'Villa')
-            + kpi('Min Stay', (p.minStay||1) + ' night(s)')
-            + kpi('Security Deposit', p.securityDeposit ? '₹'+p.securityDeposit.toLocaleString('en-IN') : '—')
-            + kpi('Rating', '⭐ ' + (p.rating||4.8))
-            + '</div>'
-
-            // Status row
-            + '<div class="flex flex-wrap gap-3 items-center">'
-            + '<span class="text-xs font-bold px-3 py-1 rounded-full ' + statusColor + '">' + (p.status||'Active') + '</span>'
-            + sfBadge
-            + (p.hot ? '<span class="hot-badge bg-red-500 text-white text-[10px] font-black px-2.5 py-1 rounded-full">🔥 Hot Price</span>' : '')
-            + '<span class="text-xs text-gray-400 font-medium">Pets: ' + (p.pets||'No') + '</span>'
-            + '</div>'
-
-            // Description
-            + (p.description ? '<div><div class="section-title">Description</div><p class="text-sm text-gray-600 leading-relaxed">' + p.description + '</p></div>' : '')
-
-            // Amenities
-            + '<div><div class="section-title">Amenities</div><div class="flex flex-wrap gap-1.5">' + amenHtml + '</div></div>'
-
-            // Videos
-            + videosHtml
-
-            // Map
-            + (p.mapUrl ? '<div><div class="section-title">Location</div><div class="rounded-xl overflow-hidden border border-gray-100" style="height:220px;"><iframe src="' + p.mapUrl + '" width="100%" height="220" frameborder="0" style="border:0;" allowfullscreen loading="lazy"></iframe></div></div>' : '')
-
-            // Blocked dates
-            + (p.blockedDates && p.blockedDates.length ? '<div><div class="section-title">Blocked Dates (' + p.blockedDates.length + ')</div><div class="text-xs text-gray-500 font-mono">' + p.blockedDates.join(', ') + '</div></div>' : '');
-
-    } catch(e) {
-        document.getElementById('propertyViewBody').innerHTML = '<div class="text-red-400 text-sm text-center py-8">Error: ' + e.message + '</div>';
-    }
-}
-
-function kpi(label, val) {
-    return '<div class="stat-card"><div class="text-xs text-gray-400 font-semibold mb-1">' + label + '</div><div class="text-base font-black text-[#0f1f3d]">' + val + '</div></div>';
-}
-
-</script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
     <style>
         :root { --brand-navy: #0f1f3d; --brand-amber: #f59e0b; --brand-cream: #fdf8f0; }
-        body { font-family: 'DM Sans', sans-serif; background: #f1f5f9; }
-        .form-input { width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 14px; font-size: 13px; font-weight: 600; color: #0f1f3d; background: #fff; transition: border-color 0.2s, box-shadow 0.2s; }
-        .form-input:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.15); }
-        .form-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 4px; }
-        .btn-primary { background: #0f1f3d; color: #fff; font-weight: 700; font-size: 13px; border-radius: 10px; padding: 9px 20px; border: none; cursor: pointer; transition: background 0.2s; }
-        .btn-primary:hover { background: #1a3260; }
-        .btn-amber { background: #f59e0b; color: #fff; font-weight: 700; font-size: 13px; border-radius: 10px; padding: 9px 20px; border: none; cursor: pointer; transition: background 0.2s; }
-        .btn-amber:hover { background: #d97706; }
-        .btn-danger { background: #ef4444; color: #fff; font-weight: 700; font-size: 12px; border-radius: 8px; padding: 6px 14px; border: none; cursor: pointer; transition: background 0.2s; }
-        .btn-danger:hover { background: #dc2626; }
-        .btn-ghost { background: transparent; color: #64748b; font-weight: 600; font-size: 12px; border-radius: 8px; padding: 6px 14px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s; }
-        .btn-ghost:hover { background: #f8fafc; color: #0f1f3d; }
-        .btn-green { background: #059669; color: #fff; font-weight: 700; font-size: 12px; border-radius: 8px; padding: 6px 14px; border: none; cursor: pointer; transition: background 0.2s; }
-        .btn-green:hover { background: #047857; }
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; }
-        .modal-box { background: #fff; border-radius: 20px; width: 100%; max-width: 720px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 60px rgba(0,0,0,0.25); }
-        .modal-box-lg { background: #fff; border-radius: 20px; width: 100%; max-width: 900px; max-height: 92vh; overflow-y: auto; box-shadow: 0 25px 60px rgba(0,0,0,0.25); }
-        .sidebar { width: 220px; flex-shrink: 0; background: #0f1f3d; min-height: 100vh; }
-        .sf-badge { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
-        .no-sf-badge { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
-        .section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
-        .tag-chip { display: inline-flex; align-items: center; gap: 4px; background: #f1f5f9; border-radius: 999px; padding: 3px 10px 3px 8px; font-size: 11px; font-weight: 600; color: #475569; }
-        .tag-chip button { background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 12px; line-height: 1; padding: 0; }
-        .tag-chip button:hover { color: #ef4444; }
-        .upload-zone { border: 2px dashed #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s; background: #f8fafc; }
-        .upload-zone:hover { border-color: #f59e0b; background: #fffbeb; }
-        .upload-zone.drag-over { border-color: #f59e0b; background: #fffbeb; }
-        .img-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 8px; border: 2px solid #e2e8f0; }
-        .img-thumb-wrap { position: relative; display: inline-block; }
-        .img-thumb-del { position: absolute; top: -6px; right: -6px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .vid-thumb-wrap { position: relative; display: inline-block; width: 80px; height: 60px; }
-        .vid-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 8px; border: 2px solid #c7d2fe; background: #1e1b4b; }
-        .vid-play-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-        .vid-play-icon i { color: white; font-size: 18px; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
-        .vid-uploading { position: absolute; inset: 0; background: rgba(15,31,61,0.7); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
-        .vid-uploading span { color: #fff; font-size: 9px; font-weight: 700; }
-        .vid-progress { width: 56px; height: 3px; background: rgba(255,255,255,0.3); border-radius: 999px; overflow: hidden; }
-        .vid-progress-bar { height: 100%; background: #f59e0b; border-radius: 999px; transition: width 0.3s; }
-        .sf-booking-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px; transition: box-shadow 0.2s; }
-        .sf-booking-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-        .stat-card { background: #fff; border-radius: 18px; border: 1px solid #f1f5f9; padding: 20px; box-shadow: 0 1px 6px rgba(0,0,0,0.04); }
-        .sidebar-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; text-align: left; border: none; cursor: pointer; width: 100%; transition: all 0.2s; }
+        body { font-family: 'DM Sans', sans-serif; background: #f8f7f4; }
+        h1, h2, h3, .display { font-family: 'Playfair Display', serif; }
+
+        /* Inline photo slider */
+        .slider-wrap { position:relative; width:100%; height:100%; overflow:hidden; background:#e5e7eb; }
+        .slider-wrap img { width:100%; height:100%; object-fit:cover; display:block; transition:transform 0.35s ease, opacity 0.25s ease; }
+        .slider-wrap img.fade { opacity:0; }
+        .slider-wrap:hover img { transform:scale(1.04); }
+        .slider-arrow { position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.82); border:none; color:#0f1f3d; font-size:20px; width:42px; height:42px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s, transform 0.15s; z-index:5; box-shadow:0 2px 8px rgba(0,0,0,0.18); }
+        .slider-arrow:hover { background:#fff; transform:translateY(-50%) scale(1.1); }
+        #sliderPrev { left:14px; }
+        #sliderNext { right:14px; }
+        .slider-counter { position:absolute; bottom:52px; right:14px; background:rgba(15,31,61,0.72); color:#fff; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; letter-spacing:.4px; pointer-events:none; }
+
+        /* Tab nav */
+        nav.sticky { height: 70px; }
+        .tab-nav { position: sticky; top: 70px; z-index: 40; background: white; border-bottom: 1px solid #e5e7eb; }
+        .tab-btn { padding: 14px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; cursor: pointer; background: none; border-top: none; border-left: none; border-right: none; }
+        .tab-btn.active { color: #0f1f3d; border-bottom-color: #f59e0b; }
+        .tab-btn:hover:not(.active) { color: #374151; }
+
+        /* Sticky sidebar */
+        .sticky-sidebar { position: sticky; top: 128px; }
+
+        /* Input focus */
+        .form-input:focus { outline: none; border-color: var(--brand-amber); box-shadow: 0 0 0 3px rgba(245,158,11,0.15); }
+
+        .verified-badge { background: linear-gradient(135deg, #d1fae5, #a7f3d0); }
+
+        @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+        .status-dot { animation: blink 2s ease-in-out infinite; }
+
+        .guest-counter-btn:hover { background: #f3f4f6; }
+        .guest-counter-btn:active { background: #e5e7eb; }
+
+        .avail-available   { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .avail-limited     { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        .avail-unavailable { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .avail-loading     { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+
+        .faq-answer { max-height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; transition: max-height 0.3s cubic-bezier(0,1,0,1), padding 0.3s ease; }
+        .faq-item.active .faq-answer { max-height: 1000px; padding-top: 0; padding-bottom: 1rem; transition: max-height 0.5s ease-in-out, padding 0.3s ease; }
+        .faq-item.active .faq-icon { transform: rotate(180deg); }
+
+        .stayflexi-frame { border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; }
+
+        /* Animated amenity cards */
+        .amenity-card {
+            opacity: 0; transform: translateY(10px);
+            animation: amenityIn 0.45s ease forwards;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+        }
+        .amenity-card:hover {
+            transform: translateY(-3px);
+            border-color: #fde68a;
+            background: linear-gradient(135deg, #fffbeb, #ffffff);
+            box-shadow: 0 8px 20px rgba(245,158,11,0.12);
+        }
+        .amenity-icon {
+            width: 36px; height: 36px; border-radius: 10px;
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            color: #059669; display: flex; align-items: center; justify-content: center;
+            font-size: 14px; flex-shrink: 0; transition: transform 0.25s ease, background 0.25s ease;
+        }
+        .amenity-card:hover .amenity-icon {
+            transform: scale(1.12) rotate(-6deg);
+            background: linear-gradient(135deg, #fde68a, #fbbf24);
+            color: #92400e;
+        }
+        @keyframes amenityIn { to { opacity: 1; transform: translateY(0); } }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        @media (max-width: 1023px) { .mobile-book-bar { display: flex; } }
+        @media (min-width: 1024px) { .mobile-book-bar { display: none; } }
+
+        /* Calendar: green = available, red = booked/unavailable. Selection stays
+           brand amber so the chosen range is still obviously distinct from both. */
+        .flatpickr-day:not(.flatpickr-disabled):not(.prevMonthDay):not(.nextMonthDay) {
+            background: #ecfdf5; color: #065f46; border-color: #a7f3d0;
+        }
+        .flatpickr-day:not(.flatpickr-disabled):not(.prevMonthDay):not(.nextMonthDay):hover {
+            background: #a7f3d0; color: #065f46; border-color: #6ee7b7;
+        }
+        .flatpickr-day.flatpickr-disabled {
+            background: #fef2f2; color: #fca5a5; border-color: #fecaca; text-decoration: line-through;
+        }
+        .flatpickr-day.today { border-color: #f59e0b; }
+        .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange,
+        .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover {
+            background: #f59e0b; color: #fff; border-color: #f59e0b;
+        }
+        .flatpickr-day.inRange {
+            background: #fde68a; color: #78350f; border-color: #fde68a; box-shadow: none;
+        }
+
+        /* Booking modal: keep it centered + fully scrollable instead of pinned to
+           the bottom edge, so rotating the device (portrait <-> landscape) or short
+           viewport heights never clip the form or the submit button. */
+        #sfBookingModal { align-items: center; padding: 12px; }
+        #sfBookingModal > div { border-radius: 1rem; max-height: 92vh; }
+        @media (max-height: 560px) {
+            /* short / landscape phones — shrink the summary + counters so the form fits */
+            #sfBookingModal > div { max-height: 96vh; }
+            #sfBookingModal h3 { font-size: 0.95rem; }
+            #sfBookingModal .p-4 { padding: 0.65rem; }
+            #sfBookingModal .space-y-4 > * + * { margin-top: 0.5rem; }
+        }
     </style>
 </head>
-<body>
+<body class="flex flex-col min-h-screen">
 
-<!-- ADMIN LOGIN GATE -->
-<div id="admin-login-gate" style="position:fixed;inset:0;z-index:9999;background:#0f172a;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">
-    <form id="admin-login-form" style="background:#1e293b;padding:2.5rem;border-radius:12px;width:320px;box-shadow:0 10px 40px rgba(0,0,0,0.4);">
-        <div style="color:#fff;font-weight:900;font-size:1.1rem;margin-bottom:1.5rem;text-align:center;">
-            STELLAR<span style="color:#fbbf24;">STAYS</span>
-            <div style="color:#94a3b8;font-size:0.75rem;font-weight:500;margin-top:2px;">Admin Panel Login</div>
-        </div>
-        <input id="admin-login-pass" type="password" placeholder="Password" autocomplete="off"
-            style="width:100%;padding:0.65rem 0.8rem;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;margin-bottom:0.75rem;outline:none;box-sizing:border-box;">
-        <div id="admin-login-error" style="color:#f87171;font-size:0.8rem;margin-bottom:0.75rem;display:none;">Incorrect password.</div>
-        <button type="submit" style="width:100%;padding:0.65rem;border-radius:8px;border:none;background:#fbbf24;color:#0f172a;font-weight:700;cursor:pointer;">Login</button>
-    </form>
-</div>
-<script>
-(function () {
-    var ADMIN_PASSWORD = "stellar@100";
-    var gate = document.getElementById('admin-login-gate');
-    var form = document.getElementById('admin-login-form');
-    var input = document.getElementById('admin-login-pass');
-    var errEl = document.getElementById('admin-login-error');
-
-    if (sessionStorage.getItem('stellarstays_admin_ok') === '1') {
-        gate.style.display = 'none';
-    }
-
-    form.addEventListener('submit', function (e) {
-        e.preventDefault();
-        if (input.value === ADMIN_PASSWORD) {
-            sessionStorage.setItem('stellarstays_admin_ok', '1');
-            gate.style.display = 'none';
-        } else {
-            errEl.style.display = 'block';
-            input.value = '';
-            input.focus();
-        }
-    });
-})();
-</script>
-
-<div class="flex min-h-screen">
-
-    <!-- SIDEBAR -->
-    <aside class="sidebar flex flex-col py-6 px-4 gap-1">
-        <div class="text-white font-black text-lg mb-6 px-2" style="font-family:'Playfair Display',serif;">
-            STELLAR<span class="text-amber-400">STAYS</span>
-            <div class="text-xs text-slate-400 font-medium mt-0.5">Admin Panel</div>
-        </div>
-
-        <button onclick="showTab('dashboard',this)" class="sidebar-btn text-slate-400 hover:bg-white/10 hover:text-white">
-            <i class="fa-solid fa-house w-4 text-center"></i> Dashboard
+<!-- NAV -->
+<nav class="bg-white border-b border-gray-100 px-4 md:px-8 flex justify-between items-center sticky top-0 z-50 shadow-sm" style="height:70px; overflow:visible;">
+    <!-- Logo — overflows below navbar like index.html -->
+    <div class="absolute z-20 left-4 md:left-8 top-[32px] md:top-[16px] cursor-pointer" onclick="window.location.href='index.html'">
+        <img src="logo.jpeg" alt="Stellar Stays" class="w-[46px] h-[46px] md:w-[80px] md:h-[80px]" style="border-radius:50%; object-fit:contain; background:#0f1f3d; box-shadow:0 4px 20px rgba(15,31,61,0.30), 0 0 0 4px #fff;" />
+    </div>
+    <!-- Back to main page (placed right after logo, always visible) -->
+    <a href="index.html" class="hidden sm:flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-[#0f1f3d] transition pl-[110px]">
+        <i class="fa-solid fa-arrow-left"></i> Back to Main Page
+    </a>
+    <!-- Villa title + dates (offset to clear logo) -->
+    <div class="hidden md:flex items-center gap-2 text-sm font-medium text-gray-600 min-w-0 flex-1 pl-6">
+        <span id="navVillaTitle" class="text-[#0f1f3d] font-bold truncate"></span>
+        <span class="text-gray-300 shrink-0">|</span>
+        <span id="navDates" class="text-gray-400 text-xs shrink-0"></span>
+        <span id="navGuests" class="text-gray-400 text-xs shrink-0"></span>
+    </div>
+    <div class="flex items-center gap-3 shrink-0 ml-auto">
+        <button onclick="scrollToSection('availability')" class="bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold px-4 sm:px-10 py-2 sm:py-2.5 rounded-full flex items-center gap-1.5 sm:gap-2 transition shadow-sm">
+            <i class="fa-solid fa-lock text-[10px] sm:text-xs"></i> Book Now
         </button>
-        <button onclick="showTab('properties',this)" class="sidebar-btn active-tab text-white bg-white/10">
-            <i class="fa-solid fa-building w-4 text-center"></i> Properties
-        </button>
-        <button onclick="showTab('bookings',this)" class="sidebar-btn text-slate-400 hover:bg-white/10 hover:text-white">
-            <i class="fa-solid fa-calendar-check w-4 text-center"></i> Bookings
-        </button>
-        <button onclick="showTab('analytics',this)" class="sidebar-btn text-slate-400 hover:bg-white/10 hover:text-white">
-            <i class="fa-solid fa-chart-line w-4 text-center"></i> Analytics
-        </button>
-
-        <!-- SF status indicator (keys from .env) -->
-        <div class="mt-4 px-2">
-            <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Stayflexi API</div>
-            <div id="sfEnvStatus" class="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-gray-500 inline-block" id="sfStatusDot"></span>
-                Checking…
-            </div>
-        </div>
-
-        <a href="index.html" target="_blank" class="sidebar-btn text-slate-400 hover:bg-white/10 hover:text-white mt-2">
-            <i class="fa-solid fa-arrow-up-right-from-square w-4 text-center text-xs"></i> View Website
+        <a href="https://wa.me/918655444465" target="_blank" class="bg-emerald-500 text-white w-9 h-9 rounded-full flex items-center justify-center text-base hover:bg-emerald-600 transition shadow-sm">
+            <i class="fa-brands fa-whatsapp"></i>
         </a>
-        <div class="mt-auto pt-6 border-t border-white/10">
-            <div class="text-[10px] text-slate-500 px-2 font-semibold uppercase tracking-wider mb-2">Server</div>
-            <div id="serverStatus" class="text-xs text-slate-400 px-2 font-medium flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-gray-500 inline-block" id="statusDot"></span>
-                Connecting…
-            </div>
-        </div>
-    </aside>
+    </div>
+</nav>
 
-    <!-- MAIN -->
-    <main class="flex-1 p-6 overflow-auto">
+<main class="flex-grow w-full">
 
-        <!-- ═══ DASHBOARD TAB ═══ -->
-        <div id="tab-dashboard" class="hidden">
-            <div class="mb-6">
-                <h1 class="text-2xl font-black text-[#0f1f3d]">Dashboard</h1>
-                <p class="text-sm text-gray-500 mt-0.5">Live overview — today's revenue, bookings & per-villa reports.</p>
-            </div>
+    <!-- Photo Slider + Video Toggle -->
+    <div class="max-w-7xl mx-auto px-4 md:px-6 pt-5">
 
-            <!-- KPI Row -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                <div class="stat-card">
-                    <div class="text-xs text-gray-400 font-semibold mb-1">Today's Revenue</div>
-                    <div class="text-2xl font-black text-emerald-600" id="dash_today_rev">₹—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-xs text-gray-400 font-semibold mb-1">This Month</div>
-                    <div class="text-2xl font-black text-indigo-600" id="dash_month_rev">₹—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-xs text-gray-400 font-semibold mb-1">Total Bookings</div>
-                    <div class="text-2xl font-black text-[#0f1f3d]" id="dash_total_bookings">—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-xs text-gray-400 font-semibold mb-1">Active Villas</div>
-                    <div class="text-2xl font-black text-amber-600" id="dash_active_villas">—</div>
-                </div>
-            </div>
+        <!-- Mobile-only back link (logo overlaps top row on small screens) -->
+        <a href="index.html" class="sm:hidden inline-flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-[#0f1f3d] transition mb-2">
+            <i class="fa-solid fa-arrow-left"></i> Back to Main Page
+        </a>
 
-            <!-- Per-Villa Monthly Report -->
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="text-sm font-black text-[#0f1f3d]">Monthly Report — Per Villa</div>
-                    <div class="flex gap-2 items-center">
-                        <select id="dash_report_month" class="form-input text-xs" style="width:auto;padding:6px 10px;">
-                        </select>
-                        <button onclick="loadVillaMonthlyReport()" class="btn-ghost text-xs flex items-center gap-1.5">
-                            <i class="fa-solid fa-file-chart-column text-xs"></i> Load
-                        </button>
-                    </div>
-                </div>
-                <div id="dash_villa_report">
-                    <div class="text-sm text-gray-400 text-center py-6">Select a month and click Load.</div>
-                </div>
-            </div>
-
-            <!-- Custom Bookings Today -->
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <div class="text-sm font-black text-[#0f1f3d] mb-4">Custom Bookings (StellarStays)</div>
-                <div id="dash_custom_bookings">
-                    <div class="text-sm text-gray-400 text-center py-6 animate-pulse">Loading…</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ═══ PROPERTIES TAB ═══ -->
-        <div id="tab-properties">
-            <div class="flex items-center justify-between mb-6">
-                <div>
-                    <h1 class="text-2xl font-black text-[#0f1f3d]">Properties</h1>
-                    <p class="text-sm text-gray-500 mt-0.5">Manage listings. Set the <strong>Stayflexi Hotel ID</strong> to enable live booking.</p>
-                </div>
-                <div class="flex gap-2">
-                    <button class="btn-ghost flex items-center gap-2 text-emerald-700 border-emerald-200" onclick="openSfImportModal()">
-                        <i class="fa-solid fa-bolt text-xs"></i> Import from SF
-                    </button>
-                    <button class="btn-amber flex items-center gap-2" onclick="openPropertyModal()">
-                        <i class="fa-solid fa-plus"></i> Add Property
-                    </button>
-                </div>
-            </div>
-
-            <!-- Summary cards -->
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
-                <div class="stat-card">
-                    <div class="text-2xl font-black text-[#0f1f3d]" id="totalPropsCount">—</div>
-                    <div class="text-xs text-gray-400 font-semibold mt-0.5">Total Properties</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-2xl font-black text-emerald-600" id="activePropsCount">—</div>
-                    <div class="text-xs text-gray-400 font-semibold mt-0.5">Active</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-2xl font-black text-amber-600" id="sfPropsCount">—</div>
-                    <div class="text-xs text-gray-400 font-semibold mt-0.5">Stayflexi Linked</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-2xl font-black text-slate-400" id="noSfPropsCount">—</div>
-                    <div class="text-xs text-gray-400 font-semibold mt-0.5">Custom Booking</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-xl font-black text-indigo-600" id="totalRevenue">₹—</div>
-                    <div class="text-xs text-gray-400 font-semibold mt-0.5">Total Revenue</div>
-                </div>
-            </div>
-
-            <div id="propertiesTable" class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading properties…</div>
-            </div>
-        </div>
-
-        <!-- ═══ BOOKINGS TAB ═══ -->
-        <div id="tab-bookings" class="hidden">
-            <div class="flex items-center justify-between mb-6">
-                <div>
-                    <h1 class="text-2xl font-black text-[#0f1f3d]">Bookings</h1>
-                    <p class="text-sm text-gray-500 mt-0.5">All guest reservations from StellarStays custom form.</p>
-                </div>
-            </div>
-            <div id="bookingsTable" class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading bookings…</div>
-            </div>
-        </div>
-
-
-        <!-- ═══ ANALYTICS TAB ═══ -->
-        <div id="tab-analytics" class="hidden">
-            <div class="mb-6">
-                <h1 class="text-2xl font-black text-[#0f1f3d]">Analytics</h1>
-                <p class="text-sm text-gray-500 mt-0.5">Revenue and booking performance overview.</p>
-            </div>
-            <!-- KPI row -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                <div class="stat-card">
-                    <div class="text-xs text-gray-400 font-semibold mb-1">Total Revenue</div>
-                    <div class="text-2xl font-black text-indigo-600" id="ana_revenue">₹—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-xs text-gray-400 font-semibold mb-1">Total Bookings</div>
-                    <div class="text-2xl font-black text-[#0f1f3d]" id="ana_bookings">—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-xs text-gray-400 font-semibold mb-1">Confirmed</div>
-                    <div class="text-2xl font-black text-emerald-600" id="ana_confirmed">—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="text-xs text-gray-400 font-semibold mb-1">Avg. Booking Value</div>
-                    <div class="text-2xl font-black text-amber-600" id="ana_avg">₹—</div>
-                </div>
-            </div>
-            <!-- Charts -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
-                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                    <div class="text-sm font-black text-[#0f1f3d] mb-4">Revenue by Month</div>
-                    <canvas id="revenueChart" height="200"></canvas>
-                </div>
-                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                    <div class="text-sm font-black text-[#0f1f3d] mb-4">Bookings by Status</div>
-                    <canvas id="statusChart" height="200"></canvas>
-                </div>
-            </div>
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <div class="text-sm font-black text-[#0f1f3d] mb-4">Top Properties by Revenue</div>
-                <div id="topPropsTable"></div>
-            </div>
-        </div>
-
-    </main>
-</div>
-
-<!-- ═══ PROPERTY MODAL ═══ -->
-<div id="propertyModal" class="modal-overlay hidden">
-    <div class="modal-box">
-        <div class="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
-            <h2 class="text-lg font-black text-[#0f1f3d]" id="modalTitle">Add Property</h2>
-            <button onclick="closePropertyModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition">
-                <i class="fa-solid fa-xmark"></i>
+        <!-- Toggle Pills — pushed down on mobile so logo doesn't overlap -->
+        <div class="flex items-center gap-2 mb-3 pt-10 md:pt-0">
+            <button id="tabPhotosBtn" onclick="showMediaTab('photos')" class="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border transition bg-[#0f1f3d] text-white border-[#0f1f3d]">
+                <i class="fa-solid fa-images"></i> Photos
+            </button>
+            <button id="tabVideoBtn" onclick="showMediaTab('video')" class="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border transition bg-white text-[#0f1f3d] border-gray-300 hover:border-[#0f1f3d]">
+                <i class="fa-solid fa-circle-play text-red-500"></i> <span id="tabVideoBtnLabel">Watch Video</span>
             </button>
         </div>
 
-        <div class="p-5 space-y-5">
+        <div class="rounded-2xl overflow-hidden" style="height:clamp(260px,42vw,500px);">
 
-            <!-- Basic Info -->
-            <div>
-                <div class="section-title">Basic Information</div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div class="sm:col-span-2">
-                        <label class="form-label">Property Name *</label>
-                        <input type="text" id="f_name" class="form-input" placeholder="e.g. Villa Aranya — Coorg">
-                    </div>
-                    <div>
-                        <label class="form-label">Location *</label>
-                        <input type="text" id="f_location" class="form-input" placeholder="e.g. Coorg, Karnataka">
-                    </div>
-                    <div>
-                        <label class="form-label">Type</label>
-                        <select id="f_type" class="form-input">
-                            <option>Villa</option><option>Farmstay</option><option>Homestay</option>
-                            <option>Cottage</option><option>Resort</option><option>Treehouse</option><option>Hotel</option>
-                        </select>
-                    </div>
-                    <div class="sm:col-span-2">
-                        <label class="form-label">Description</label>
-                        <textarea id="f_description" rows="3" class="form-input" placeholder="Short description shown on listing…"></textarea>
-                    </div>
+            <!-- PHOTOS PANEL -->
+            <div id="mediaPhotos" class="slider-wrap h-full">
+                <img id="sliderMainImg" src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1200&q=80" alt="Villa photo" />
+                <button class="slider-arrow" id="sliderPrev" onclick="sliderStep(-1)" title="Previous">&#8249;</button>
+                <button class="slider-arrow" id="sliderNext" onclick="sliderStep(1)" title="Next">&#8250;</button>
+                <div class="slider-counter" id="sliderCounter">1 / 1</div>
+            </div>
+
+            <!-- VIDEO PANEL -->
+            <div id="mediaVideo" class="hidden w-full h-full bg-black flex items-center justify-center">
+                <div id="videoContainer" class="w-full h-full"></div>
+                <!-- No video placeholder -->
+                <div id="noVideoMsg" class="hidden flex-col items-center justify-center gap-3 text-white w-full h-full">
+                    <i class="fa-solid fa-video-slash text-4xl text-gray-500"></i>
+                    <p class="text-sm font-semibold text-gray-400">No video available for this property</p>
                 </div>
             </div>
 
-            <!-- Capacity & Pricing -->
-            <div>
-                <div class="section-title">Capacity &amp; Pricing</div>
-                <div id="sfPriceImportWarning" class="hidden mb-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Couldn't fetch a live rate from Stayflexi — enter the nightly price manually.
-                </div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div><label class="form-label">Guests *</label><input type="number" id="f_guests" class="form-input" min="1" placeholder="10"></div>
-                    <div><label class="form-label">Bedrooms *</label><input type="number" id="f_bedrooms" class="form-input" min="1" placeholder="4"></div>
-                    <div><label class="form-label">₹ / Night *</label><input type="number" id="f_pricePerNight" class="form-input" min="0" placeholder="12000"></div>
-                    <div><label class="form-label">₹ Weekend</label><input type="number" id="f_weekendRate" class="form-input" min="0" placeholder="15000"></div>
-                    <div><label class="form-label">Min Stay (nights)</label><input type="number" id="f_minStay" class="form-input" min="1" value="1"></div>
-                    <div><label class="form-label">Security Deposit ₹</label><input type="number" id="f_securityDeposit" class="form-input" min="0" placeholder="5000"></div>
-                    <div><label class="form-label">Rating</label><input type="number" id="f_rating" class="form-input" min="1" max="5" step="0.1" placeholder="4.8"></div>
-                    <div><label class="form-label">Pets</label>
-                        <select id="f_pets" class="form-input"><option value="No">No</option><option value="Yes">Yes</option><option value="On Request">On Request</option></select>
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Stayflexi Integration -->
-            <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-2">
-                    <i class="fa-solid fa-bolt text-emerald-600 text-sm"></i>
-                    <span class="text-sm font-black text-emerald-800">Stayflexi Integration</span>
-                    <span class="ml-auto text-[10px] font-bold text-emerald-600 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">Optional</span>
-                </div>
-                <p class="text-xs text-emerald-700 mb-3 leading-relaxed">
-                    Enter the Stayflexi Hotel ID to enable live availability &amp; payment via iframe. Leave blank to use StellarStays' own booking form.
-                </p>
-                <label class="form-label" style="color:#065f46;">Stayflexi Hotel ID</label>
-                <div class="flex gap-2">
-                    <input type="text" id="f_stayflexi" class="form-input" placeholder="e.g. 36295" style="border-color:#a7f3d0;">
-                    <button type="button" onclick="previewStayflexi()" class="shrink-0 btn-ghost flex items-center gap-1.5 text-emerald-700 border-emerald-300">
-                        <i class="fa-solid fa-eye text-xs"></i> Preview
-                    </button>
-                    <button type="button" onclick="syncFromStayflexi()" class="shrink-0 btn-ghost flex items-center gap-1.5 text-emerald-700 border-emerald-300">
-                        <i class="fa-solid fa-rotate text-xs"></i> Sync
-                    </button>
-                </div>
-                <p class="text-[11px] text-emerald-600 mt-2 font-medium">
-                    <i class="fa-solid fa-circle-info mr-1"></i>
-                    Get Hotel ID from <a href="https://dashboard.stayflexi.com" target="_blank" class="underline font-bold">dashboard.stayflexi.com</a>. 
-                    Click <strong>Sync</strong> to auto-fill name, images &amp; amenities from Stayflexi.
-                </p>
-                <div id="sfSyncStatus" class="hidden mt-2 text-xs font-semibold text-emerald-700 bg-emerald-100 px-3 py-2 rounded-lg"></div>
-                <div id="sfPreviewFrame" class="hidden mt-3 rounded-xl overflow-hidden border border-emerald-200" style="height:300px;">
-                    <iframe id="sfPreviewIframe" src="" width="100%" height="300" frameborder="0" scrolling="yes" allow="payment"></iframe>
-                </div>
-            </div>
-
-            <!-- Media -->
-            <div>
-                <div class="section-title">Media</div>
-                <div class="space-y-4">
-                    <!-- Main image -->
-                    <div>
-                        <label class="form-label">Main Image</label>
-                        <div class="flex gap-3 items-start">
-                            <div class="flex-1">
-                                <input type="url" id="f_image" class="form-input mb-2" placeholder="https://… (URL) or upload below">
-                                <div class="upload-zone" onclick="document.getElementById('mainImageUpload').click()" 
-                                     ondragover="event.preventDefault();this.classList.add('drag-over')"
-                                     ondragleave="this.classList.remove('drag-over')"
-                                     ondrop="handleImageDrop(event,'main')">
-                                    <i class="fa-solid fa-cloud-arrow-up text-2xl text-gray-300 mb-2"></i>
-                                    <div class="text-xs text-gray-400 font-semibold">Click or drag to upload main image</div>
-                                    <div class="text-[10px] text-gray-300 mt-0.5">JPG, PNG, WEBP — max 5MB</div>
-                                </div>
-                                <input type="file" id="mainImageUpload" accept="image/*" class="hidden" onchange="handleImageFile(event,'main')">
-                            </div>
-                            <div id="mainImagePreview" class="shrink-0 hidden">
-                                <div class="img-thumb-wrap">
-                                    <img id="mainImageThumb" src="" class="img-thumb" style="width:100px;height:80px;">
-                                    <button class="img-thumb-del" onclick="clearMainImage()">×</button>
-                                </div>
-                                <div id="mainUploadIndicator" class="hidden text-[10px] font-semibold text-emerald-700 mt-1 text-center"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Gallery -->
-                    <div>
-                        <label class="form-label">Gallery Images <span class="font-normal normal-case text-gray-400">(URL or upload)</span></label>
-                        <div class="upload-zone mb-2" onclick="document.getElementById('galleryUpload').click()"
-                             ondragover="event.preventDefault();this.classList.add('drag-over')"
-                             ondragleave="this.classList.remove('drag-over')"
-                             ondrop="handleImageDrop(event,'gallery')">
-                            <i class="fa-solid fa-images text-2xl text-gray-300 mb-2"></i>
-                            <div class="text-xs text-gray-400 font-semibold">Click or drag multiple images for gallery</div>
-                        </div>
-                        <input type="file" id="galleryUpload" accept="image/*" multiple class="hidden" onchange="handleGalleryFiles(event)">
-                        <div id="galleryThumbs" class="flex flex-wrap gap-2 mt-2"></div>
-                        <textarea id="f_gallery" rows="3" class="form-input font-mono text-xs mt-2" placeholder="Or paste image URLs one per line&#10;https://image1.jpg&#10;https://image2.jpg"></textarea>
-                    </div>
-                    <!-- Videos -->
-                    <div>
-                        <label class="form-label">Property Videos <span class="font-normal normal-case text-gray-400">(upload or paste URL)</span></label>
-                        <div class="upload-zone mb-2" onclick="document.getElementById('videoUpload').click()"
-                             ondragover="event.preventDefault();this.classList.add('drag-over')"
-                             ondragleave="this.classList.remove('drag-over')"
-                             ondrop="handleVideoDrop(event)">
-                            <i class="fa-solid fa-film text-2xl text-gray-300 mb-2"></i>
-                            <div class="text-xs text-gray-400 font-semibold">Click or drag video files</div>
-                            <div class="text-[10px] text-gray-300 mt-0.5">MP4, MOV, WEBM — max 100MB · Uploaded to Cloudinary</div>
-                        </div>
-                        <input type="file" id="videoUpload" accept="video/*" multiple class="hidden" onchange="handleVideoFiles(event)">
-                        <div id="videoThumbs" class="flex flex-wrap gap-2 mt-2"></div>
-                        <textarea id="f_videos" rows="2" class="form-input font-mono text-xs mt-2" placeholder="Or paste Cloudinary/YouTube/direct video URLs one per line"></textarea>
-                        <p class="text-[10px] text-gray-400 mt-1 font-medium"><i class="fa-solid fa-circle-info mr-1"></i>Videos auto-upload to Cloudinary. Paste YouTube URLs directly — they'll play in the booking page.</p>
-                    </div>
-                    <div>
-                        <label class="form-label">Google Maps Embed URL</label>
-                        <input type="url" id="f_mapUrl" class="form-input" placeholder="https://maps.google.com/maps?q=…&output=embed">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Amenities -->
-            <div>
-                <div class="section-title">Amenities</div>
-                <!-- Quick presets -->
-                <div class="flex flex-wrap gap-1.5 mb-2">
-                    <span class="text-[10px] text-gray-400 font-semibold self-center">Quick add:</span>
-                    <script>
-                    var AMENITY_PRESETS = ['WiFi','Pool','AC','Parking','Kitchen','BBQ','Gym','Hot Tub','Fireplace','Pet Friendly','Sea View','Mountain View'];
-                    document.write(AMENITY_PRESETS.map(a => 
-                        '<button type="button" onclick="quickAddAmenity(\''+a+'\')" class="text-[10px] font-semibold bg-gray-100 hover:bg-amber-100 hover:text-amber-800 text-gray-600 px-2 py-0.5 rounded-full transition">+ '+a+'</button>'
-                    ).join(''));
-                    </script>
-                </div>
-                <div class="flex gap-2 mb-2">
-                    <input type="text" id="amenityInput" class="form-input" placeholder="Type amenity and press Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();addTag('amenity');}">
-                    <button type="button" onclick="addTag('amenity')" class="btn-ghost shrink-0">Add</button>
-                </div>
-                <div id="amenityTags" class="flex flex-wrap gap-1.5 mt-1"></div>
-            </div>
-
-            <!-- Status & Options -->
-            <div>
-                <div class="section-title">Status &amp; Options</div>
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <div>
-                        <label class="form-label">Status</label>
-                        <select id="f_status" class="form-input">
-                            <option value="Active">Active</option>
-                            <option value="Inactive">Inactive</option>
-                            <option value="Pending Review">Pending Review</option>
-                        </select>
-                    </div>
-                    <div class="flex items-end pb-1">
-                        <label class="flex items-center gap-2 cursor-pointer select-none">
-                            <input type="checkbox" id="f_hot" class="accent-amber-500 w-4 h-4">
-                            <span class="text-sm font-bold text-gray-700">🔥 Hot Price Badge</span>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-
-        <div class="p-5 border-t border-gray-100 flex justify-end gap-3 sticky bottom-0 bg-white rounded-b-2xl">
-            <button onclick="closePropertyModal()" class="btn-ghost">Cancel</button>
-            <button onclick="saveProperty()" class="btn-primary flex items-center gap-2">
-                <i class="fa-solid fa-save"></i> <span id="savePropertyBtnLabel">Save Property</span>
-            </button>
         </div>
     </div>
-</div>
 
-<!-- ═══ SF IMPORT MODAL ═══ -->
-<div id="sfImportModal" class="modal-overlay hidden">
-    <div class="modal-box-lg">
-        <div class="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
-            <h2 class="text-lg font-black text-[#0f1f3d]"><i class="fa-solid fa-bolt text-emerald-500 mr-2"></i>Import Properties from Stayflexi</h2>
-            <button onclick="closeSfImportModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-        <div class="p-5">
-            <p class="text-sm text-gray-500 mb-4">Fetches all hotels under your Stayflexi Group ID and lets you import them as properties.</p>
-            <div class="flex gap-3 mb-5">
-                <button onclick="fetchSfHotelsForImport()" class="btn-amber flex items-center gap-2">
-                    <i class="fa-solid fa-cloud-arrow-down text-xs"></i> Fetch Hotels
+    <!-- Property Header -->
+    <div class="max-w-7xl mx-auto px-4 md:px-6 pt-5 pb-2">
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+            <div class="flex-1">
+                <div class="flex flex-wrap items-center gap-2 mb-2">
+                    <span id="availabilityPill" class="avail-loading text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <span class="status-dot w-2 h-2 rounded-full bg-gray-400 inline-block"></span>
+                        <span id="availabilityText">Checking availability&#8230;</span>
+                    </span>
+                </div>
+                <h1 id="detailVillaName" class="text-2xl md:text-3xl font-black text-[#0f1f3d] tracking-tight">Loading&#8230;</h1>
+                <p class="text-sm text-gray-500 mt-1.5 flex items-center flex-wrap gap-x-3 gap-y-1">
+                    <span><i class="fa-solid fa-location-dot text-amber-500 mr-1"></i><span id="detailVillaLocation">&#8212;</span>, India</span>
+                    <span class="text-gray-200 hidden sm:inline">|</span>
+                    <span class="font-semibold text-[#0f1f3d]"><i class="fa-solid fa-star text-amber-500 mr-1"></i><span id="detailVillaRating">0.0</span> &middot; Excellent</span>
+                </p>
+                <!-- Quick facts -->
+                <div class="flex flex-wrap gap-2 mt-3">
+                    <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 px-3 py-1.5 rounded-full">
+                        <i class="fa-solid fa-bed text-amber-500"></i> <span id="detailVillaBeds">&#8212;</span>
+                    </span>
+                    <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 px-3 py-1.5 rounded-full">
+                        <i class="fa-solid fa-users text-amber-500"></i> Up to <span id="detailVillaGuests" class="mx-1">&#8212;</span> Guests
+                    </span>
+                    <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 px-3 py-1.5 rounded-full">
+                        <i class="fa-solid fa-paw text-amber-500"></i> Pets: <span id="detailVillaPets" class="ml-1">&#8212;</span>
+                    </span>
+                    <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 px-3 py-1.5 rounded-full">
+                        <i class="fa-solid fa-user-check text-emerald-500"></i> <span id="detailVillaAdults">2 Adults</span> selected
+                    </span>
+                </div>
+            </div>
+            <div class="flex gap-2 shrink-0">
+                <button class="flex items-center gap-1.5 bg-white px-3 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition text-xs font-semibold text-gray-600">
+                    <i class="fa-regular fa-share-from-square text-gray-400"></i> Share
+                </button>
+                <button class="flex items-center gap-1.5 bg-white px-3 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition text-xs font-semibold text-gray-600">
+                    <i class="fa-regular fa-heart text-rose-400"></i> Save
                 </button>
             </div>
-            <div id="sfImportList"><div class="text-sm text-gray-400 text-center py-8">Click "Fetch Hotels" to load your Stayflexi properties.</div></div>
+        </div>
+    </div>
+
+    <!-- Tab Nav -->
+    <div class="tab-nav">
+        <div class="max-w-7xl mx-auto px-4 md:px-6 flex overflow-x-auto no-scrollbar">
+            <button class="tab-btn active" data-section="overview" onclick="scrollToSection('overview')">Overview</button>
+            <button class="tab-btn" data-section="amenities" onclick="scrollToSection('amenities')">Amenities</button>
+            <button class="tab-btn" data-section="availability" onclick="scrollToSection('availability')">Availability</button>
+            <button class="tab-btn" data-section="reviews" onclick="scrollToSection('reviews')">Reviews</button>
+            <button class="tab-btn" data-section="location" onclick="scrollToSection('location')">Location</button>
+            <button class="tab-btn" data-section="faq" onclick="scrollToSection('faq')">FAQ</button>
+        </div>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24 lg:pb-6">
+        <div class="grid grid-cols-1 gap-8">
+
+            <!-- LEFT: Tab Content -->
+            <div class="w-full">
+
+                <!-- OVERVIEW -->
+                <div id="tab-overview" class="space-y-6 scroll-mt-32">
+                    <div>
+                        <h2 class="text-xl font-black text-[#0f1f3d] mb-3">About this boutique getaway</h2>
+                        <p class="text-sm text-gray-600 leading-relaxed">Experience unmatched comfort and design tailored for discerning travellers. Our properties combine local architectural character with premium luxury installations. Fully staffed and ready to create memorable experiences for your group.</p>
+                        <div class="flex flex-wrap gap-2 mt-4">
+                            <span class="text-xs bg-green-50 border border-green-200 text-green-700 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5"><i class="fa-solid fa-check"></i> Instant Confirmation</span>
+                            <span class="text-xs bg-blue-50 border border-blue-200 text-blue-700 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5"><i class="fa-solid fa-check"></i> Free Cancellation (7+ days)</span>
+                            <span class="text-xs bg-amber-50 border border-amber-200 text-amber-700 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5"><i class="fa-solid fa-check"></i> 24/7 Host Support</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4 border-t border-gray-100">
+                        <div class="flex items-start gap-3 p-3 bg-white rounded-xl border border-gray-100">
+                            <i class="fa-solid fa-star text-amber-500 mt-0.5 shrink-0"></i>
+                            <div><div class="text-xs font-black text-gray-900">Guest Favourite</div><div class="text-[10px] text-gray-400">Top-rated property</div></div>
+                        </div>
+                        <div class="flex items-start gap-3 p-3 bg-white rounded-xl border border-gray-100">
+                            <i class="fa-solid fa-bolt text-amber-500 mt-0.5 shrink-0"></i>
+                            <div><div class="text-xs font-black text-gray-900">Instant Booking</div><div class="text-[10px] text-gray-400">No waiting needed</div></div>
+                        </div>
+                        <div class="flex items-start gap-3 p-3 bg-white rounded-xl border border-gray-100">
+                            <i class="fa-solid fa-shield-halved text-emerald-500 mt-0.5 shrink-0"></i>
+                            <div><div class="text-xs font-black text-gray-900">Verified Property</div><div class="text-[10px] text-gray-400">Inspected &amp; certified</div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AMENITIES -->
+                <div id="tab-amenities" class="space-y-4 scroll-mt-32 pt-6 border-t border-gray-100">
+                    <h2 class="text-xl font-black text-[#0f1f3d]">Spaces &amp; Amenities</h2>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="amenityContainer">
+                        <div class="text-sm text-gray-400 italic">Loading amenities&#8230;</div>
+                    </div>
+                </div>
+
+                <!-- AVAILABILITY -->
+                <div id="tab-availability" class="space-y-4 scroll-mt-32 pt-6 border-t border-gray-100">
+                    <div class="flex items-center justify-between max-w-xl mx-auto w-full">
+                        <h2 class="text-xl font-black text-[#0f1f3d]">Real-Time Availability</h2>
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">
+                            <span class="status-dot w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> Live Availability
+                        </div>
+                    </div>
+
+                    <!-- Single booking card — price header, dates, rooms, selection & CTA all live here -->
+                    <div class="max-w-xl mx-auto w-full bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
+
+                        <div class="p-4 border-b border-gray-100">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <div class="text-2xl font-black text-[#0f1f3d]" style="font-family:'Playfair Display',serif;">
+                                        <span id="stickyRatePrint">&#8377;0</span><span class="text-sm font-normal text-gray-400"> / night</span>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-lg font-bold text-[#0f1f3d] flex items-center gap-1 justify-end">
+                                        <i class="fa-solid fa-star text-amber-500 text-sm"></i><span id="stickyRating">0.0</span>
+                                    </div>
+                                    <div class="text-[10px] text-gray-400 font-medium">Excellent</div>
+                                </div>
+                            </div>
+                            <div class="mt-2 pt-2 border-t border-gray-100">
+                                <span id="sidebarAvailBadge" class="text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 avail-loading" style="width:fit-content;">
+                                    <span class="status-dot w-1.5 h-1.5 rounded-full bg-gray-400 inline-block"></span>
+                                    Select dates to check availability
+                                </span>
+                            </div>
+                        </div>
+
+                        <div id="availBanner" class="p-4 border-b border-gray-100 flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-calendar-check text-gray-300 text-xl"></i>
+                            </div>
+                            <div class="flex-1">
+                                <div class="text-sm font-black text-gray-400">Select dates to check live availability</div>
+                                <div class="text-xs text-gray-400 mt-0.5">Pick your check-in and check-out dates to see real-time rates.</div>
+                            </div>
+                        </div>
+
+                        <!-- Booking widget: hidden until the property's Stayflexi hotel ID loads -->
+                        <div id="stayflexiSection" class="hidden p-4 space-y-4">
+
+                            <div>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Select Dates</label>
+                                <input type="text" id="dateRangePickerMain" placeholder="Check-in &#8594; Check-out" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition cursor-pointer bg-[#fdf8f0]">
+                                <div class="flex items-center gap-3 mt-1.5 text-[10px] font-semibold text-gray-400">
+                                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:#a7f3d0;"></span> Available</span>
+                                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:#fca5a5;"></span> Booked</span>
+                                </div>
+                            </div>
+
+                            <!-- Check-in / check-out time slots for the selected dates -->
+                            <div id="sfTimesBar" class="hidden flex items-center gap-4 text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
+                                <span><i class="fa-solid fa-right-to-bracket text-emerald-500 mr-1"></i> Check-in from <span id="sfCheckinTime" class="text-gray-700">&#8212;</span></span>
+                                <span><i class="fa-solid fa-right-from-bracket text-red-400 mr-1"></i> Check-out by <span id="sfCheckoutTime" class="text-gray-700">&#8212;</span></span>
+                            </div>
+
+                            <!-- Live room + rate list, populated by sfOnDatesChange() once dates are picked -->
+                            <div id="sfRoomCards" class="hidden space-y-3">
+                                <h3 class="text-sm font-black text-[#0f1f3d]">Available Rooms</h3>
+                                <div id="sfRoomList" class="space-y-3"></div>
+                            </div>
+
+                            <!-- Selected room summary, shown once selectSfRoom() runs -->
+                            <div id="sfSelectedRoom" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+                                <div class="text-xs min-w-0">
+                                    <div class="font-black text-emerald-800 text-sm truncate" id="sfSelRoomName">&#8212;</div>
+                                    <div class="text-emerald-600" id="sfSelRatePlan">&#8212;</div>
+                                </div>
+                                <div class="text-right shrink-0">
+                                    <div class="text-lg font-black text-emerald-700" id="sfSelTotal">&#8377;0</div>
+                                    <button type="button" onclick="clearSfSelection()" class="text-[10px] font-bold text-emerald-500 hover:text-emerald-700 underline">Change room</button>
+                                </div>
+                            </div>
+
+                            <button id="sfBookCta" onclick="openSfBookingModal()" class="hidden w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide items-center justify-center gap-2 text-sm">
+                                <i class="fa-solid fa-lock text-xs"></i> Continue to Book
+                        </button>
+                        </div>
+
+                    </div>
+
+                    <p class="text-xs text-gray-400 font-medium flex items-center justify-center gap-1.5 max-w-xl mx-auto w-full">
+                        <i class="fa-solid fa-bolt text-amber-400"></i>
+                        Live rates &amp; instant confirmation.
+                    </p>
+                </div>
+
+                <!-- REVIEWS -->
+                <div id="tab-reviews" class="space-y-4 scroll-mt-32 pt-6 border-t border-gray-100">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xl font-black text-[#0f1f3d]">Guest Reviews</h2>
+                        <span class="text-xs text-gray-500 font-semibold bg-white border border-gray-200 px-3 py-1.5 rounded-xl shadow-sm">
+                            <i class="fa-solid fa-star text-amber-500 mr-1"></i><span id="detailVillaRating2">0.0</span> &middot; Verified
+                        </span>
+                    </div>
+                    <div class="space-y-4" id="reviewsContainer"><div class="text-sm text-gray-400 italic">No reviews yet.</div></div>
+                </div>
+
+                <!-- LOCATION -->
+                <div id="tab-location" class="space-y-4 scroll-mt-32 pt-6 border-t border-gray-100">
+                    <h2 class="text-xl font-black text-[#0f1f3d]">Location</h2>
+                    <div class="rounded-2xl overflow-hidden border border-gray-100 shadow-sm aspect-video bg-gray-100">
+                        <iframe id="googleMapsEmbed" width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                    </div>
+                    <p class="text-xs text-gray-400 font-medium flex items-center gap-1.5">
+                        <i class="fa-solid fa-lock text-gray-300"></i> Exact address shared after booking confirmation
+                    </p>
+                </div>
+
+                <!-- FAQ -->
+                <div id="tab-faq" class="space-y-4 scroll-mt-32 pt-6 border-t border-gray-100 pb-6">
+                    <h2 class="text-xl font-black text-[#0f1f3d]">Frequently Asked Questions</h2>
+                    <div class="space-y-2.5" id="faqContainer"></div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+</main>
+
+<!-- SF Booking Modal -->
+<div id="sfBookingModal" class="hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
+    <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div class="flex items-center justify-between p-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+            <h3 class="text-lg font-black text-[#0f1f3d]">Complete Your Booking</h3>
+            <button onclick="closeSfBookingModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="p-4 space-y-4">
+            <!-- Booking summary -->
+            <div class="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs space-y-1">
+                <div class="flex justify-between"><span class="text-gray-500">Room</span><span id="sfModalRoom" class="font-bold text-[#0f1f3d]">—</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">Rate Plan</span><span id="sfModalPlan" class="font-bold text-[#0f1f3d]">—</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">Dates</span><span id="sfModalDates" class="font-bold text-[#0f1f3d]">—</span></div>
+                <div class="flex justify-between border-t border-amber-200 pt-1 mt-1">
+                    <span class="font-black text-[#0f1f3d]">Total</span><span id="sfModalTotal" class="font-black text-emerald-600">₹0</span>
+                </div>
+            </div>
+
+            <!-- Guest info -->
+            <div class="space-y-2">
+                <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Guest Information</h4>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">First Name *</label>
+                        <input type="text" id="sfGuestFirst" placeholder="Rahul" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Last Name *</label>
+                        <input type="text" id="sfGuestLast" placeholder="Sharma" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Email *</label>
+                    <input type="email" id="sfGuestEmail" placeholder="rahul@example.com" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Phone *</label>
+                    <div class="flex">
+                        <span class="bg-gray-100 border border-r-0 border-gray-200 rounded-l-xl px-3 flex items-center text-sm font-semibold text-gray-500">+91</span>
+                        <input type="tel" id="sfGuestPhone" placeholder="98765 43210" class="form-input flex-1 border border-gray-200 rounded-r-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Billing address (optional) -->
+            <div class="space-y-2">
+                <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Address <span class="font-normal text-gray-300">(optional)</span></h4>
+                <div>
+                    <input type="text" id="sfGuestAddress" placeholder="Street address" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="sfGuestCity" placeholder="City" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                    <input type="text" id="sfGuestState" placeholder="State" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="sfGuestZip" placeholder="Zip / Pincode" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                    <input type="text" id="sfGuestCountry" value="India" placeholder="Country" class="form-input w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0f1f3d] transition bg-gray-50">
+                </div>
+            </div>
+
+            <!-- Guest counts -->
+            <div class="bg-[#fdf8f0] rounded-xl border border-amber-100 p-3 space-y-1.5">
+                <h4 class="text-[10px] font-black text-gray-500 uppercase tracking-widest">Guests</h4>
+                <div class="flex items-center justify-between py-0.5">
+                    <div class="text-sm font-bold text-[#0f1f3d]">Adults</div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="changeSfGuests('adults',-1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">−</button>
+                        <span id="sfAdultsCount" class="w-4 text-center text-sm font-black text-[#0f1f3d]">2</span>
+                        <button type="button" onclick="changeSfGuests('adults',1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">+</button>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between py-0.5">
+                    <div class="text-sm font-bold text-[#0f1f3d]">Children <span class="text-[10px] font-normal text-gray-400">(2–12)</span></div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="changeSfGuests('children',-1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">−</button>
+                        <span id="sfChildrenCount" class="w-4 text-center text-sm font-black text-[#0f1f3d]">0</span>
+                        <button type="button" onclick="changeSfGuests('children',1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment — Razorpay only, no pay-at-hotel option -->
+            <div class="bg-[#fdf8f0] border border-amber-100 rounded-xl p-3 flex items-start gap-2.5">
+                <i class="fa-solid fa-shield-halved text-amber-500 mt-0.5"></i>
+                <p class="text-[11px] text-amber-800 font-semibold leading-relaxed">Secure payment via Razorpay. You'll be redirected to complete payment — your booking is confirmed instantly once payment succeeds.</p>
+            </div>
+
+            <button onclick="executeSfBooking()" id="sfBookSubmitBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide flex items-center justify-center gap-2 text-sm">
+                <i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">Confirm &amp; Pay via Razorpay</span>
+            </button>
+            <p class="text-center text-[10px] text-gray-400 font-medium flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+                Secure payment via Razorpay · Instant confirmation
+            </p>
         </div>
     </div>
 </div>
 
+
+<div class="mobile-book-bar fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 px-4 py-3 items-center justify-between shadow-2xl">
+    <div>
+        <div class="text-base font-black text-[#0f1f3d]"><span id="mobileStickyRate">&#8377;0</span><span class="text-xs font-normal text-gray-400"> / night</span></div>
+        <div class="text-[10px] text-gray-400">+ taxes</div>
+    </div>
+    <button onclick="scrollToSection('availability')" class="bg-amber-500 text-white font-bold px-6 py-3 rounded-xl text-sm shadow">Book Now</button>
+</div>
+
+<!-- FOOTER -->
+<footer class="bg-[#0f1f3d] text-gray-400 pt-14 pb-8 px-4 md:px-8 relative mt-auto">
+    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 pb-10 border-b border-white/10">
+        <!-- Brand col -->
+        <div class="space-y-4">
+            <img src="logo.jpeg" alt="Stellar Stays" style="height:70px; width:70px; border-radius:50%; border:2px solid #ffffff; object-fit:cover; display:block;" />
+            <p class="text-xs text-gray-500 font-medium leading-relaxed max-w-xs">
+                Turn your property into profits with StellarStays. Exceptional property management and premium vacation rentals across India.
+            </p>
+            <div class="flex flex-col gap-2 text-xs font-semibold">
+                <a href="tel:+918655444465" class="hover:text-white transition flex items-center gap-2"><i class="fa-solid fa-phone w-4"></i> +91 86554 44465</a>
+                <a href="mailto:info@stellarstays.com" class="hover:text-white transition flex items-center gap-2"><i class="fa-solid fa-envelope w-4"></i> info@stellarstays.com</a>
+                <a href="https://wa.me/918655444465" target="_blank" class="hover:text-white transition flex items-center gap-2"><i class="fa-brands fa-whatsapp w-4"></i> Chat on WhatsApp</a>
+            </div>
+        </div>
+        <!-- Links col -->
+        <div class="grid grid-cols-2 gap-6 text-xs font-semibold text-gray-500">
+            <div class="space-y-3">
+                <h5 class="text-gray-200 font-bold text-sm tracking-wide">Explore</h5>
+                <ul class="space-y-2.5">
+                    <li><a href="index.html" class="hover:text-white transition">Home</a></li>
+                    <li><a href="index.html#destinations" class="hover:text-white transition">Destinations</a></li>
+                    <li><a href="about-us.html" class="hover:text-white transition">About Us</a></li>
+                </ul>
+            </div>
+            <div class="space-y-3">
+                <h5 class="text-gray-200 font-bold text-sm tracking-wide">Policies</h5>
+                <ul class="space-y-2.5">
+                    <li><a href="#tab-faq" onclick="scrollToSection('faq');return false;" class="hover:text-white transition">FAQ</a></li>
+                    <li><a href="#tab-faq" onclick="scrollToSection('faq');return false;" class="hover:text-white transition">House Rules</a></li>
+                    <li><a href="#tab-faq" onclick="scrollToSection('faq');return false;" class="hover:text-white transition">Cancellation &amp; Refund</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="max-w-7xl mx-auto pt-6 flex flex-col sm:flex-row justify-between items-center gap-3 text-[11px] text-gray-600">
+        <span>Copyright &copy; 2026 StellarStays. All rights reserved.</span>
+        <span class="flex items-center gap-1.5"><i class="fa-solid fa-code text-amber-400"></i> Designed &amp; Developed by WebNova</span>
+    </div>
+
+    <!-- WhatsApp FAB -->
+    <a href="https://wa.me/918655444465" target="_blank" rel="noopener noreferrer" class="fixed bottom-24 lg:bottom-6 right-6 z-50 bg-emerald-500 text-white w-14 h-14 rounded-full flex items-center justify-center text-3xl shadow-2xl hover:bg-emerald-600 hover:scale-110 transition duration-300 group">
+        <i class="fa-brands fa-whatsapp"></i>
+        <span class="absolute right-16 bg-white text-gray-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-gray-200 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap">Chat with Us</span>
+    </a>
+</footer>
+
 <script>
-// ── API base ──
+// Media tab toggle (Photos / Video)
+function showMediaTab(tab) {
+    var photosPanel = document.getElementById('mediaPhotos');
+    var videoPanel  = document.getElementById('mediaVideo');
+    var photosBtn   = document.getElementById('tabPhotosBtn');
+    var videoBtn    = document.getElementById('tabVideoBtn');
+    if (tab === 'video') {
+        photosPanel.classList.add('hidden');
+        videoPanel.classList.remove('hidden');
+        videoBtn.classList.remove('bg-white','text-[#0f1f3d]','border-gray-300');
+        videoBtn.classList.add('bg-[#0f1f3d]','text-white','border-[#0f1f3d]');
+        photosBtn.classList.remove('bg-[#0f1f3d]','text-white','border-[#0f1f3d]');
+        photosBtn.classList.add('bg-white','text-[#0f1f3d]','border-gray-300');
+    } else {
+        videoPanel.classList.add('hidden');
+        photosPanel.classList.remove('hidden');
+        photosBtn.classList.remove('bg-white','text-[#0f1f3d]','border-gray-300');
+        photosBtn.classList.add('bg-[#0f1f3d]','text-white','border-[#0f1f3d]');
+        videoBtn.classList.remove('bg-[#0f1f3d]','text-white','border-[#0f1f3d]');
+        videoBtn.classList.add('bg-white','text-[#0f1f3d]','border-gray-300');
+    }
+}
+
+// Scroll to section (click nav)
+function scrollToSection(tabId) {
+    const section = document.getElementById('tab-' + tabId);
+    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Scrollspy: highlight nav button matching section in view
+function setActiveTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.section === tabId);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const sectionIds = ['overview', 'amenities', 'availability', 'reviews', 'location', 'faq'];
+    const sections = sectionIds.map(id => document.getElementById('tab-' + id)).filter(Boolean);
+    const observer = new IntersectionObserver(function(entries) {
+        let best = null;
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                if (!best || entry.intersectionRatio > best.intersectionRatio) best = entry;
+            }
+        });
+        if (best) setActiveTab(best.target.id.replace('tab-', ''));
+    }, { rootMargin: '-130px 0px -60% 0px', threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] });
+    sections.forEach(s => observer.observe(s));
+});
+
+// Inline photo slider
+var _sliderIdx = 0;
+var _sliderImgs = [];
+
+function _sliderRender() {
+    var n = _sliderImgs.length;
+    if (!n) return;
+    document.getElementById('sliderMainImg').src = _sliderImgs[_sliderIdx];
+    document.getElementById('sliderCounter').textContent = (_sliderIdx + 1) + ' / ' + n;
+}
+
+function sliderStep(delta) {
+    if (!_sliderImgs.length) return;
+    var img = document.getElementById('sliderMainImg');
+    img.classList.add('fade');
+    setTimeout(function() {
+        _sliderIdx = (_sliderIdx + delta + _sliderImgs.length) % _sliderImgs.length;
+        _sliderRender();
+        img.classList.remove('fade');
+    }, 220);
+}
+
+// Keyboard nav
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight') sliderStep(1);
+    else if (e.key === 'ArrowLeft') sliderStep(-1);
+});
+
+// Guest state
+const guests = { adults: 2, children: 0, infants: 0 };
+let MAX_GUESTS = 20;
+
+let checkIn = '', checkOut = '';
+
+function updateStayflexiUrl() {
+    var hotelId = (villaData && villaData.stayflexi) ? villaData.stayflexi.trim() : '';
+    if (hotelId) {
+        var iframe = document.getElementById('stayflexiIframe');
+        if (iframe) {
+            var url = 'https://book.stayflexi.com/' + hotelId;
+            if (checkIn && checkOut) {
+                url += '?checkin=' + checkIn + '&checkout=' + checkOut + '&adults=' + guests.adults + '&children=' + guests.children;
+            }
+            iframe.src = url;
+        }
+    }
+    updateAvailabilityBanner();
+}
+
+function updateAvailabilityBanner() {
+    var banner = document.getElementById('availBanner');
+    if (checkIn && checkOut) {
+        var fmt = function(d) { var p = d.split('-'); return p[2] + '/' + p[1]; };
+        document.getElementById('navDates').textContent = fmt(checkIn) + ' \u2013 ' + fmt(checkOut);
+    }
+    if (!checkIn || !checkOut) {
+        setAvailUI('loading', 'Checking availability\u2026', 'Select dates to check availability', banner, null);
+        return;
+    }
+    setAvailUI('loading', 'Checking\u2026', 'Checking\u2026', banner, null);
+    setTimeout(function() {
+        setAvailUI('available', '\u2713 Available for selected dates', '\u2713 Available', banner,
+            { checkIn: checkIn, checkOut: checkOut, guests: guests.adults + guests.children });
+    }, 900);
+}
+
+function setAvailUI(status, pillLabel, badgeLabel, banner, data) {
+    var pill      = document.getElementById('availabilityPill');
+    var text      = document.getElementById('availabilityText');
+    var sideBadge = document.getElementById('sidebarAvailBadge');
+    var sideBadge2 = document.getElementById('sideAvailBadge');
+    pill.className = 'text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 avail-' + status;
+    text.textContent = pillLabel;
+    var dotColor = status === 'available' ? 'bg-emerald-500' : status === 'limited' ? 'bg-amber-500' : status === 'unavailable' ? 'bg-red-500' : 'bg-gray-400';
+    var badgeHtml = '<span class="status-dot w-1.5 h-1.5 rounded-full inline-block ' + dotColor + '"></span> ' + badgeLabel;
+    [sideBadge, sideBadge2].forEach(function(el) {
+        if (!el) return;
+        el.className = 'text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 avail-' + status;
+        el.style.width = 'fit-content';
+        el.innerHTML = badgeHtml;
+    });
+    if (data && banner) {
+        var nights = Math.round((new Date(data.checkOut) - new Date(data.checkIn)) / 86400000);
+        var isAvail = status === 'available';
+        banner.innerHTML = '<div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ' + (isAvail ? 'bg-emerald-50' : 'bg-red-50') + '">'
+            + '<i class="fa-solid ' + (isAvail ? 'fa-circle-check text-emerald-500' : 'fa-circle-xmark text-red-500') + ' text-2xl"></i></div>'
+            + '<div class="flex-1"><div class="text-sm font-black ' + (isAvail ? 'text-emerald-700' : 'text-red-700') + '">'
+            + (isAvail ? 'Villa is available!' : 'Not available for selected dates') + '</div>'
+            + '<div class="text-xs text-gray-500 mt-0.5">' + data.checkIn + ' \u2192 ' + data.checkOut + ' \u00b7 ' + nights + ' night' + (nights !== 1 ? 's' : '') + ' \u00b7 ' + data.guests + ' guest' + (data.guests !== 1 ? 's' : '') + '</div></div>'
+            + (isAvail ? '<div class="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full shrink-0">Book Now \u2193</div>' : '');
+    }
+}
+
+// NOTE: the old generic (non-Stayflexi) date pickers, price calculator, and
+// custom booking modal have been removed — every property now books through
+// Stayflexi, so dates and prices are always the live Stayflexi values
+// (see dateRangePickerSidebar + sfOnDatesChange below).
+// reinitDatePickers is kept as a no-op call target since loadBookingPage still
+// calls it before initialising the SF-specific pickers.
+function reinitDatePickers(blockedDates) { /* handled by SF pickers in loadBookingPage */ }
+
+function getParam(name) {
+    var lower = name.toLowerCase();
+    for (var pair of new URLSearchParams(window.location.search)) {
+        if (pair[0].toLowerCase() === lower) return pair[1];
+    }
+    return '';
+}
+
+// Local YYYY-MM-DD — NEVER use .toISOString() on a flatpickr date for this.
+// toISOString() converts to UTC first, which rolls IST midnight back to the
+// previous day (UTC+5:30 → subtracting the offset crosses the day boundary).
+// This keeps the date exactly as shown/selected in the calendar.
+function toLocalYMD(d) {
+    var yyyy = d.getFullYear();
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    return yyyy + '-' + mm + '-' + dd;
+}
+
+var villaData = null;
 function getApiBase() {
     var h = window.location.hostname, p = window.location.port;
     return (p && p !== '5000') ? 'http://' + h + ':5000/api' : '/api';
 }
-var API = getApiBase();
 
-// ── SF Config (from .env via /api/config) ──
-// Note: the raw API key is never sent to the browser — only a "configured" flag.
-var SF_GROUP_ID = '';
-
-async function loadSfConfig() {
-    try {
-        var res = await fetch(API + '/config');
-        if (!res.ok) throw new Error('config fetch failed');
-        var cfg = await res.json();
-        SF_GROUP_ID = cfg.sfGroupId || '';
-        var dot = document.getElementById('sfStatusDot');
-        var lbl = document.getElementById('sfEnvStatus');
-        if (cfg.sfConfigured) {
-            if (dot) { dot.style.background = '#10b981'; }
-            if (lbl) lbl.innerHTML = '<span class="w-2 h-2 rounded-full inline-block" style="background:#10b981"></span> Connected';
-        } else {
-            if (dot) dot.style.background = '#ef4444';
-            var reason = cfg.sfError ? cfg.sfError : 'Keys missing in .env';
-            if (lbl) {
-                lbl.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Not connected';
-                lbl.title = reason; // hover to see the real reason (e.g. "Please specify the correct api key")
-            }
-        }
-    } catch(e) {
-        var lbl = document.getElementById('sfEnvStatus');
-        if (lbl) lbl.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Config error';
-        console.warn('SF config load failed:', e.message);
-    }
-}
-
-function saveSfConfig() { /* no-op: keys in .env */ }
-
-document.addEventListener('DOMContentLoaded', function() {
-    loadSfConfig();
-    populateMonthSelector();
-});
-
-// ── SF API helper — routes through backend proxy, key stays server-side ──
-async function sfFetch(url) {
-    var res = await fetch(API + '/sf/raw?path=' + encodeURIComponent(url));
-    if (!res.ok) throw new Error('SF API error ' + res.status);
-    return res.json();
-}
-
-// ── Tab switching ──
-var tabs = ['dashboard','properties','bookings','analytics'];
-function showTab(name, btn) {
-    tabs.forEach(function(t) {
-        document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
-    });
-    document.querySelectorAll('.sidebar-btn').forEach(function(b) {
-        b.classList.remove('bg-white/10','text-white','active-tab');
-        b.classList.add('text-slate-400');
-    });
-    if (btn) {
-        btn.classList.add('bg-white/10','text-white');
-        btn.classList.remove('text-slate-400');
-    }
-    if (name === 'bookings') loadBookings();
-    if (name === 'analytics') loadAnalytics();
-    if (name === 'dashboard') loadDashboard();
-}
-
-// ── Server health ──
-async function checkServer() {
-    try {
-        await fetch(API + '/properties?_ping=1', { signal: AbortSignal.timeout(3000) });
-        document.getElementById('serverStatus').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span> Server online';
-    } catch {
-        document.getElementById('serverStatus').innerHTML = '<span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span> Server offline';
-    }
-}
-
-// ── Tag management ──
-var tags = { amenity: [] };
-function addTag(type) {
-    var input = document.getElementById(type + 'Input');
-    var val = input.value.trim();
-    if (!val || tags[type].includes(val)) { input.value = ''; return; }
-    tags[type].push(val);
-    renderTags(type);
-    input.value = '';
-}
-function quickAddAmenity(val) {
-    if (tags.amenity.includes(val)) return;
-    tags.amenity.push(val);
-    renderTags('amenity');
-}
-function removeTag(type, idx) { tags[type].splice(idx, 1); renderTags(type); }
-function renderTags(type) {
-    document.getElementById(type + 'Tags').innerHTML = tags[type].map(function(t, i) {
-        return '<span class="tag-chip">' + t + '<button onclick="removeTag(\'' + type + '\',' + i + ')">×</button></span>';
-    }).join('');
-}
-function setTags(type, arr) { tags[type] = arr || []; renderTags(type); }
-
-// ── Image upload helpers — pre-upload to Cloudinary immediately ──
-// Each gallery entry: { localSrc, cloudUrl, status: 'uploading'|'done'|'error' }
-var galleryImages = [];
-
-// Upload single image file to Cloudinary via server, return cloud URL
-async function uploadImageToCloudinary(base64Data) {
-    var res = await fetch(API + '/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: base64Data })
-    });
-    var data = await res.json();
-    if (!data.url) throw new Error(data.error || 'Upload failed');
-    return data.url;
-}
-
-function handleImageFile(event, type) {
-    var file = event.target.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = async function(e) {
-        if (type === 'main') {
-            // Show local preview immediately
-            document.getElementById('mainImageThumb').src = e.target.result;
-            document.getElementById('mainImagePreview').classList.remove('hidden');
-            // Show uploading state
-            var thumb = document.getElementById('mainImageThumb');
-            thumb.style.opacity = '0.5';
-            var indicator = document.getElementById('mainUploadIndicator');
-            if (indicator) { indicator.textContent = '⏳ Uploading to Cloudinary…'; indicator.classList.remove('hidden'); }
-            try {
-                var cloudUrl = await uploadImageToCloudinary(e.target.result);
-                document.getElementById('f_image').value = cloudUrl;
-                thumb.src = cloudUrl;
-                thumb.style.opacity = '1';
-                if (indicator) { indicator.textContent = '✅ Saved to Cloudinary'; setTimeout(function(){ indicator.classList.add('hidden'); }, 2000); }
-            } catch(err) {
-                thumb.style.opacity = '1';
-                if (indicator) { indicator.textContent = '❌ Upload failed: ' + err.message; indicator.style.color = '#dc2626'; }
-                // Fallback: keep base64, server will handle
-                document.getElementById('f_image').value = e.target.result;
-            }
+// Inits (or reinits, once live blocked dates are known) the single Stayflexi
+// date-range picker. Always destroys any existing instance first — this is
+// what prevents the old "stacked calendar" bug from double-initializing the
+// same input.
+function initSfDatePickers(blockedDates) {
+    var el = document.getElementById('dateRangePickerMain');
+    if (!el) return;
+    var cfg = {
+        mode: 'range', minDate: 'today', dateFormat: 'Y-m-d',
+        disable: blockedDates || [],
+        onChange: function(dates) {
+            if (dates.length !== 2) return;
+            checkIn  = toLocalYMD(dates[0]);
+            checkOut = toLocalYMD(dates[1]);
+            updateAvailabilityBanner();
+            sfOnDatesChange(checkIn, checkOut);
         }
     };
-    reader.readAsDataURL(file);
+    if (el._flatpickr) el._flatpickr.destroy();
+    flatpickr(el, cfg);
+    if (checkIn && checkOut) el._flatpickr.setDate([checkIn, checkOut], false);
 }
 
-function handleGalleryFiles(event) {
-    uploadGalleryFiles(Array.from(event.target.files));
-}
 
-function uploadGalleryFiles(files) {
-    files.forEach(function(file) {
-        var reader = new FileReader();
-        reader.onload = async function(e) {
-            var entry = { localSrc: e.target.result, cloudUrl: '', status: 'uploading' };
-            galleryImages.push(entry);
-            renderGalleryThumbs();
-            try {
-                entry.cloudUrl = await uploadImageToCloudinary(e.target.result);
-                entry.status = 'done';
-            } catch(err) {
-                entry.status = 'error';
-                entry.cloudUrl = e.target.result; // fallback base64
-            }
-            renderGalleryThumbs();
-        };
-        reader.readAsDataURL(file);
-    });
-}
+async function loadBookingPage() {
+    var propertyId  = getParam('id');
+    var urlCheckIn  = getParam('checkIn');
+    var urlCheckOut = getParam('checkOut');
+    var urlAdults   = parseInt(getParam('adults')) || 2;
 
-function handleImageDrop(event, type) {
-    event.preventDefault();
-    event.currentTarget.classList.remove('drag-over');
-    var files = Array.from(event.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    if (!files.length) return;
-    if (type === 'main') {
-        handleImageFile({ target: { files: [files[0]] } }, 'main');
-    } else {
-        uploadGalleryFiles(files);
+    guests.adults = Math.max(1, urlAdults);
+    sfGuests.adults = guests.adults;
+    document.getElementById('detailVillaAdults').textContent = guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : '');
+    document.getElementById('navGuests').textContent         = guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : '');
+
+    if (urlCheckIn && urlCheckOut) {
+        checkIn = urlCheckIn; checkOut = urlCheckOut;
+        updateAvailabilityBanner();
     }
-}
 
-function renderGalleryThumbs() {
-    document.getElementById('galleryThumbs').innerHTML = galleryImages.map(function(entry, i) {
-        var overlay = '';
-        if (entry.status === 'uploading') {
-            overlay = '<div style="position:absolute;inset:0;background:rgba(15,31,61,0.6);border-radius:8px;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:9px;font-weight:700;">⏳</span></div>';
-        } else if (entry.status === 'error') {
-            overlay = '<div style="position:absolute;inset:0;background:rgba(239,68,68,0.6);border-radius:8px;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:9px;font-weight:700;">✗</span></div>';
-        } else {
-            overlay = '<div style="position:absolute;top:2px;left:2px;"><span style="background:#10b981;color:#fff;font-size:8px;font-weight:700;padding:1px 4px;border-radius:999px;">✓</span></div>';
-        }
-        return '<div class="img-thumb-wrap" style="position:relative;">'
-            + '<img src="' + (entry.cloudUrl || entry.localSrc) + '" class="img-thumb">'
-            + overlay
-            + '<button class="img-thumb-del" onclick="removeGalleryThumb(' + i + ')">×</button></div>';
-    }).join('');
-}
+    if (!propertyId) { document.getElementById('detailVillaName').textContent = 'Property not found'; return; }
 
-function removeGalleryThumb(i) { galleryImages.splice(i, 1); renderGalleryThumbs(); }
-
-function clearMainImage() {
-    document.getElementById('f_image').value = '';
-    document.getElementById('mainImagePreview').classList.add('hidden');
-    document.getElementById('mainImageThumb').src = '';
-    var indicator = document.getElementById('mainUploadIndicator');
-    if (indicator) indicator.classList.add('hidden');
-}
-
-// ── Video upload helpers ──
-var videoFiles = []; // { file, url, status: 'pending'|'uploading'|'done'|'error', progress, cloudUrl }
-
-function handleVideoFiles(event) {
-    uploadVideos(Array.from(event.target.files));
-}
-
-function handleVideoDrop(event) {
-    event.preventDefault();
-    event.currentTarget.classList.remove('drag-over');
-    var files = Array.from(event.dataTransfer.files).filter(function(f) { return f.type.startsWith('video/'); });
-    if (files.length) uploadVideos(files);
-}
-
-function uploadVideos(files) {
-    files.forEach(function(file) {
-        var entry = { file: file, url: URL.createObjectURL(file), status: 'pending', progress: 0, cloudUrl: '' };
-        videoFiles.push(entry);
-    });
-    renderVideoThumbs();
-    // Start uploading pending ones
-    videoFiles.forEach(function(entry, i) {
-        if (entry.status === 'pending') startVideoUpload(entry, i);
-    });
-}
-
-function startVideoUpload(entry, idx) {
-    entry.status = 'uploading';
-    renderVideoThumbs();
-
-    var reader = new FileReader();
-    reader.onload = async function(e) {
-        try {
-            var res = await fetch(API + '/upload-video', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: e.target.result, filename: entry.file.name })
-            });
-            var data = await res.json();
-            if (data.url) {
-                entry.cloudUrl = data.url;
-                entry.status = 'done';
-            } else {
-                entry.status = 'error';
-            }
-        } catch(err) {
-            entry.status = 'error';
-        }
-        renderVideoThumbs();
-    };
-    reader.readAsDataURL(entry.file);
-}
-
-function renderVideoThumbs() {
-    document.getElementById('videoThumbs').innerHTML = videoFiles.map(function(v, i) {
-        var statusOverlay = '';
-        if (v.status === 'uploading') {
-            statusOverlay = '<div class="vid-uploading"><span>Uploading…</span><div class="vid-progress"><div class="vid-progress-bar" style="width:60%"></div></div></div>';
-        } else if (v.status === 'error') {
-            statusOverlay = '<div class="vid-uploading" style="background:rgba(239,68,68,0.75)"><span>Failed</span></div>';
-        } else if (v.status === 'done') {
-            statusOverlay = '<div class="vid-play-icon"><i class="fa-solid fa-circle-check" style="color:#34d399;font-size:20px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.5))"></i></div>';
-        } else {
-            statusOverlay = '<div class="vid-play-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>';
-        }
-        return '<div class="vid-thumb-wrap">'
-            + '<video src="' + v.url + '" class="vid-thumb" muted preload="metadata"></video>'
-            + statusOverlay
-            + '<button class="img-thumb-del" onclick="removeVideoThumb(' + i + ')">×</button>'
-            + '</div>';
-    }).join('');
-}
-
-function removeVideoThumb(i) { videoFiles.splice(i, 1); renderVideoThumbs(); }
-
-function getVideoUrls() {
-    // Cloudinary URLs from uploads + manual textarea URLs
-    var uploaded = videoFiles.filter(function(v) { return v.status === 'done'; }).map(function(v) { return v.cloudUrl; });
-    var manual = (document.getElementById('f_videos').value || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
-    return uploaded.concat(manual);
-}
-
-function clearVideos() {
-    videoFiles = [];
-    renderVideoThumbs();
-    document.getElementById('f_videos').value = '';
-}
-
-// ── Stayflexi Preview ──
-function previewStayflexi() {
-    var id = document.getElementById('f_stayflexi').value.trim();
-    if (!id) { alert('Enter a Stayflexi Hotel ID first.'); return; }
-    document.getElementById('sfPreviewIframe').src = 'https://book.stayflexi.com/' + id;
-    document.getElementById('sfPreviewFrame').classList.remove('hidden');
-}
-
-// ── Stayflexi Sync (auto-fill from SF API) ──
-async function syncFromStayflexi() {
-    var hotelId = document.getElementById('f_stayflexi').value.trim();
-    if (!hotelId) { alert('Enter a Stayflexi Hotel ID first.'); return; }
-    var statusEl = document.getElementById('sfSyncStatus');
-    statusEl.textContent = '⏳ Fetching from Stayflexi…';
-    statusEl.classList.remove('hidden');
     try {
-        var data = await sfFetch('/core/api/v1/beservice/hotelcontent?hotelId=' + hotelId);
-        // Fill fields
-        if (data.propertyName) document.getElementById('f_name').value = data.propertyName;
-        if (data.city && data.state) document.getElementById('f_location').value = data.city + ', ' + data.state;
-        if (data.propertyDescription) document.getElementById('f_description').value = data.propertyDescription;
-        if (data.propertyRating) document.getElementById('f_rating').value = data.propertyRating;
-        // Main image
-        if (data.hotelImages && data.hotelImages[0]) {
-            document.getElementById('f_image').value = data.hotelImages[0];
-            document.getElementById('mainImageThumb').src = data.hotelImages[0];
-            document.getElementById('mainImagePreview').classList.remove('hidden');
-        }
-        // Gallery
-        if (data.hotelImages && data.hotelImages.length > 1) {
-            document.getElementById('f_gallery').value = data.hotelImages.slice(1).join('\n');
-        }
+        var res = await fetch(getApiBase() + '/properties/' + propertyId);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        villaData = await res.json();
+
+        document.title = villaData.name + ' \u2014 StellarStays';
+        document.getElementById('detailVillaName').textContent     = villaData.name || 'Boutique Stay';
+        document.getElementById('detailVillaLocation').textContent = villaData.location || 'India';
+        document.getElementById('detailVillaRating').textContent   = villaData.rating || '4.8';
+        document.getElementById('detailVillaRating2').textContent  = villaData.rating || '4.8';
+        document.getElementById('detailVillaBeds').textContent     = (villaData.bedrooms || '\u2014') + ' BHK';
+        document.getElementById('detailVillaGuests').textContent   = villaData.guests || '\u2014';
+        if (villaData.guests) MAX_GUESTS = parseInt(villaData.guests) || MAX_GUESTS;
+        document.getElementById('detailVillaPets').textContent     = villaData.petsAllowed ? 'Allowed' : 'Not Allowed';
+        document.getElementById('stickyRating').textContent        = villaData.rating || '4.8';
+        var rateStr = '\u20b9' + (villaData.pricePerNight || 0).toLocaleString('en-IN');
+        document.getElementById('stickyRatePrint').textContent  = rateStr;
+        document.getElementById('mobileStickyRate').textContent = rateStr;
+        var sideRatingEl = document.getElementById('sideRating');
+        var sideRateEl   = document.getElementById('sideRatePrint');
+        if (sideRatingEl) sideRatingEl.textContent = villaData.rating || '4.8';
+        if (sideRateEl)   sideRateEl.textContent   = rateStr;
+        document.getElementById('navVillaTitle').textContent    = villaData.name || '';
+
         // Amenities
-        if (data.hotelAmenities && data.hotelAmenities[0]) {
-            var amenList = Object.keys(data.hotelAmenities[0]);
-            setTags('amenity', amenList);
+        var amenContainer = document.getElementById('amenityContainer');
+        if (amenContainer && villaData.amenities && villaData.amenities.length) {
+            var amenityIconMap = [
+                [/wi-?fi/i, 'fa-wifi'], [/pool/i, 'fa-person-swimming'], [/ac\b|air.?cond/i, 'fa-snowflake'],
+                [/parking/i, 'fa-square-parking'], [/kitchen/i, 'fa-kitchen-set'], [/bbq|barbecue/i, 'fa-fire-burner'],
+                [/hot ?tub|jacuzzi/i, 'fa-hot-tub-person'], [/fireplace/i, 'fa-fire'], [/tv|television/i, 'fa-tv'],
+                [/wash(er|ing)?|laundry/i, 'fa-shirt'], [/garden|lawn/i, 'fa-seedling'], [/balcony|terrace/i, 'fa-archway'],
+                [/gym|fitness/i, 'fa-dumbbell'], [/pet/i, 'fa-paw'], [/security|cctv|guard/i, 'fa-shield-halved'],
+                [/breakfast|meal|food/i, 'fa-utensils'], [/heater|heating/i, 'fa-temperature-high'],
+                [/power ?backup|generator/i, 'fa-bolt'], [/elevator|lift/i, 'fa-elevator'], [/view/i, 'fa-mountain-sun']
+            ];
+            function iconFor(name) {
+                for (var i = 0; i < amenityIconMap.length; i++) { if (amenityIconMap[i][0].test(name)) return amenityIconMap[i][1]; }
+                return 'fa-circle-check';
+            }
+            amenContainer.innerHTML = villaData.amenities.map(function(a, idx) {
+                return '<div class="amenity-card flex flex-col items-center text-center gap-2 bg-gray-50 rounded-xl px-3 py-4 text-xs font-semibold text-gray-700 border border-gray-100" style="animation-delay:' + (idx * 0.06) + 's">'
+                    + '<span class="amenity-icon"><i class="fa-solid ' + iconFor(a) + '"></i></span><span>' + a + '</span></div>';
+            }).join('');
         }
-        // Map URL
-        if (data.latitude && data.longitude) {
-            document.getElementById('f_mapUrl').value = 'https://maps.google.com/maps?q=' + data.latitude + ',' + data.longitude + '&output=embed';
+
+        // Photos — init inline slider
+        var images = (villaData.gallery && villaData.gallery.length) ? villaData.gallery : (villaData.image ? [villaData.image] : []);
+        window._galleryImages = images;
+        _sliderImgs = images;
+        _sliderIdx = 0;
+        if (images.length > 0) {
+            document.getElementById('sliderMainImg').src = images[0];
+            document.getElementById('sliderCounter').textContent = '1 / ' + images.length;
         }
-        statusEl.textContent = '✅ Synced from Stayflexi! Review and save.';
-        statusEl.style.background = '#ecfdf5';
+
+        // Maps
+        var mapEl = document.getElementById('googleMapsEmbed');
+        if (mapEl && villaData.location) {
+            mapEl.src = 'https://maps.google.com/maps?q=' + encodeURIComponent(villaData.location + ', India') + '&output=embed';
+        }
+
+        // Video — admin saves as `videos` array
+        var videoContainer = document.getElementById('videoContainer');
+        var noVideoMsg = document.getElementById('noVideoMsg');
+        var firstVideo = (villaData.videos && villaData.videos.length) ? villaData.videos[0].trim() : (villaData.video ? villaData.video.trim() : '');
+        if (firstVideo) {
+            var vid = firstVideo;
+            var embedHtml = '';
+            var ytMatch = vid.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/);
+            if (ytMatch) {
+                embedHtml = '<iframe src="https://www.youtube.com/embed/' + ytMatch[1] + '?rel=0&modestbranding=1" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay; encrypted-media" style="display:block;"></iframe>';
+            }
+            var vmMatch = vid.match(/vimeo\.com\/(\d+)/);
+            if (!embedHtml && vmMatch) {
+                embedHtml = '<iframe src="https://player.vimeo.com/video/' + vmMatch[1] + '" width="100%" height="100%" frameborder="0" allowfullscreen style="display:block;"></iframe>';
+            }
+            if (!embedHtml) {
+                embedHtml = '<video src="' + vid + '" controls playsinline style="width:100%;height:100%;display:block;background:#000;"></video>';
+            }
+            if (videoContainer) videoContainer.innerHTML = embedHtml;
+            var lbl = document.getElementById('tabVideoBtnLabel');
+            if (lbl) lbl.textContent = 'Watch Video';
+        } else {
+            if (videoContainer) videoContainer.classList.add('hidden');
+            if (noVideoMsg) { noVideoMsg.classList.remove('hidden'); noVideoMsg.classList.add('flex'); }
+            var lbl = document.getElementById('tabVideoBtnLabel');
+            if (lbl) lbl.textContent = 'No Video';
+            var tabVideoBtn = document.getElementById('tabVideoBtn');
+            if (tabVideoBtn) {
+                tabVideoBtn.classList.add('opacity-60');
+                tabVideoBtn.querySelector('i').classList.remove('text-red-500');
+                tabVideoBtn.querySelector('i').classList.add('text-gray-400');
+            }
+        }
+
+        // Reviews
+        var reviewsContainer = document.getElementById('reviewsContainer');
+        if (reviewsContainer && villaData.reviews && villaData.reviews.length) {
+            reviewsContainer.innerHTML = villaData.reviews.map(function(r) {
+                var stars = '';
+                for (var i = 0; i < 5; i++) stars += '<i class="fa-solid fa-star text-xs ' + (i < (r.rating || 5) ? 'text-amber-400' : 'text-gray-200') + '"></i>';
+                return '<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">'
+                    + '<div class="flex items-start gap-3 mb-3">'
+                    + '<div class="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-black text-sm shrink-0">' + (r.guestName || 'G')[0].toUpperCase() + '</div>'
+                    + '<div class="flex-1"><div class="flex items-center justify-between"><span class="font-bold text-sm text-[#0f1f3d]">' + (r.guestName || 'Guest') + '</span><span class="text-xs text-gray-400">' + (r.date || '') + '</span></div>'
+                    + '<div class="flex gap-0.5 mt-0.5">' + stars + '</div></div></div>'
+                    + '<p class="text-sm text-gray-600 leading-relaxed">' + (r.comment || '') + '</p></div>';
+            }).join('');
+        }
+
+        // FAQ
+        var faqContainer = document.getElementById('faqContainer');
+        var defaultFAQs = [
+            { q: 'What is the check-in and check-out time?', a: 'Check-in is from 2:00 PM and check-out is by 11:00 AM. Early check-in or late check-out may be available upon request.' },
+            { q: 'Is the property pet-friendly?', a: villaData.petsAllowed ? 'Yes! Pets are welcome at this property. Please inform us in advance.' : 'Unfortunately, pets are not permitted at this property.' },
+            { q: 'What is the cancellation policy?', a: 'Free cancellation is available for bookings cancelled 7 or more days before check-in. Cancellations within 7 days may incur a charge.' },
+            { q: 'Are outside guests allowed?', a: 'For the comfort and security of all guests, visitors who are not registered guests are not permitted on the property without prior approval.' }
+        ];
+        var faqs = (villaData.faqs && villaData.faqs.length) ? villaData.faqs : defaultFAQs;
+        if (faqContainer) {
+            faqContainer.innerHTML = faqs.map(function(f) {
+                return '<div class="faq-item bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">'
+                    + '<button class="w-full flex items-center justify-between px-5 py-4 text-left font-bold text-sm text-[#0f1f3d] hover:bg-gray-50 transition" onclick="this.closest(\'.faq-item\').classList.toggle(\'active\')">'
+                    + '<span class="flex-1">' + f.q + '</span><i class="fa-solid fa-chevron-down text-gray-400 text-xs faq-icon transition-transform duration-300 shrink-0 ml-3"></i></button>'
+                    + '<div class="faq-answer px-5 text-sm text-gray-600 leading-relaxed">' + f.a + '</div></div>';
+            }).join('');
+        }
+
+        // ── All bookings now go through Stayflexi: dates, availability, and
+        // pricing are always the live Stayflexi values (no local/custom fallback). ──
+        var sfSection = document.getElementById('stayflexiSection');
+        var sfHotelId = (villaData.stayflexi || '').trim();
+        if (sfHotelId) {
+            if (sfSection) sfSection.classList.remove('hidden');
+
+            // Init the date picker — see initSfDatePickers() below. Reinitialized
+            // again once live blocked dates come back from Stayflexi.
+            initSfDatePickers([]);
+            // Pre-fill if URL had dates — kicks off the availability/room lookup
+            // immediately, ahead of the blocked-dates reinit below.
+            if (checkIn && checkOut) sfOnDatesChange(checkIn, checkOut);
+
+            // Mobile bar
+            var mobileBar = document.querySelector('.mobile-book-bar button');
+            if (mobileBar) {
+                mobileBar.textContent = 'Check Availability';
+                mobileBar.onclick = function() { scrollToSection('availability'); };
+            }
+        } else {
+            // Property has no Stayflexi hotel ID configured — there is no other
+            // booking path anymore, so surface this clearly instead of silently
+            // showing a form that can't actually take a real booking.
+            console.error('[StellarStays] Property "' + (villaData.name || propertyId) + '" has no Stayflexi ID set — booking cannot proceed.');
+            var availBanner = document.getElementById('availBanner');
+            if (availBanner) {
+                availBanner.innerHTML = '<div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-red-50"><i class="fa-solid fa-triangle-exclamation text-red-500 text-2xl"></i></div>'
+                    + '<div class="flex-1"><div class="text-sm font-black text-red-700">Booking temporarily unavailable</div>'
+                    + '<div class="text-xs text-gray-500 mt-0.5">Online booking isn\'t set up for this property yet. Please contact us via WhatsApp to book.</div></div>';
+            }
+        }
+
+        // ── Live Stayflexi sync (only for SF-linked properties) ──
+        // Auto-fetch on load: max guests + real-time blocked dates.
+        // Any failure here silently falls back to stored Mongo values.
+        var sfLiveBlockedDates = [];
+        if (sfHotelId) {
+            try {
+                var content = await sfFetch('/core/api/v1/beservice/hotelcontent?hotelId=' + sfHotelId);
+                var rt = content.roomTypeList && content.roomTypeList[0];
+                var liveGuests = rt ? parseInt(rt.maxOccupants || rt.maxPossible || 0) : 0;
+                if (liveGuests) {
+                    villaData.guests = liveGuests;
+                    MAX_GUESTS = liveGuests;
+                    document.getElementById('detailVillaGuests').textContent = liveGuests;
+                }
+            } catch (e) {
+                console.warn('SF hotel content fetch failed, using stored guest count:', e.message);
+            }
+
+            try {
+                var today = new Date();
+                var future = new Date(); future.setDate(future.getDate() + 90);
+                var calendar = await sfFetch('/core/api/v1/beservice/hotelcalendar/?hotelId=' + sfHotelId
+                    + '&fromDate=' + fmtSfDate(today) + '&toDate=' + fmtSfDate(future));
+                var avail = (calendar.aggregate && calendar.aggregate.availableRoomCount) || [];
+                sfLiveBlockedDates = avail.filter(function(d) { return d.count === 0; }).map(function(d) { return d.date; });
+            } catch (e) {
+                console.warn('SF calendar fetch failed, using stored blocked dates only:', e.message);
+            }
+        }
+
+        // ── Reinit date pickers with blocked dates from DB + live SF blocked dates ──
+        reinitDatePickers((villaData.blockedDates || []).concat(sfLiveBlockedDates));
+
+        // If SF property, reinit the date picker(s) now that live blocked dates are known
+        if (sfHotelId) {
+            initSfDatePickers((villaData.blockedDates || []).concat(sfLiveBlockedDates));
+        }
+
     } catch (err) {
-        statusEl.textContent = '❌ Sync failed: ' + err.message;
-        statusEl.style.background = '#fef2f2';
-        statusEl.style.color = '#dc2626';
+        console.error('[StellarStays] Could not load property:', err);
+        document.getElementById('detailVillaName').textContent = 'Could not load property';
     }
 }
 
-// ── Property Modal ──
-var editingPropertyId = null;
+// ══════════════════════════════════════════════════
+// ── STAYFLEXI API INTEGRATION ──
+// ══════════════════════════════════════════════════
 
-function openPropertyModal(property) {
-    editingPropertyId = property ? property._id : null;
-    document.getElementById('modalTitle').textContent = property ? 'Edit Property' : 'Add Property';
-    document.getElementById('savePropertyBtnLabel').textContent = property ? 'Update Property' : 'Save Property';
-    var priceWarningEl = document.getElementById('sfPriceImportWarning');
-    if (priceWarningEl) priceWarningEl.classList.add('hidden');
-    galleryImages = [];
-    renderGalleryThumbs();
-    clearVideos();
-    if (property && property.videos && property.videos.length) {
-        document.getElementById('f_videos').value = property.videos.join('\n');
-    }
+var sfSelectedRoom = null; // {roomTypeId, roomTypeName, ratePlanId, ratePlanName, price, checkin, checkout}
+var sfGuests = { adults: 2, children: 0 };
 
-    ['name','location','type','description','guests','bedrooms','pricePerNight','weekendRate',
-     'minStay','securityDeposit','rating','pets','stayflexi','image','gallery','mapUrl','status']
-    .forEach(function(f) {
-        var el = document.getElementById('f_' + f);
-        if (!el) return;
-        if (property) {
-            if (f === 'gallery') el.value = (property.gallery || []).join('\n');
-            else el.value = property[f] !== undefined ? property[f] : (el.tagName === 'SELECT' ? el.options[0].value : '');
-        } else {
-            el.value = f === 'minStay' ? '1' : f === 'status' ? 'Active' : f === 'type' ? 'Villa' : f === 'pets' ? 'No' : '';
-        }
+// Routes through backend proxy (/api/sf/raw) — SF_API_KEY stays server-side,
+// never touches the browser. Path/query built same as before, just forwarded.
+function sfFetch(path) {
+    return fetch(getApiBase() + '/sf/raw?path=' + encodeURIComponent(path)).then(function(r) {
+        if (!r.ok) throw new Error('SF API ' + r.status);
+        return r.json();
     });
+}
 
-    // Main image preview
-    var img = property ? property.image : '';
-    if (img) {
-        document.getElementById('mainImageThumb').src = img;
-        document.getElementById('mainImagePreview').classList.remove('hidden');
-    } else {
-        document.getElementById('mainImagePreview').classList.add('hidden');
+// Format date JS → DD-MM-YYYY
+function fmtSfDate(d) {
+    var dt = new Date(d);
+    var dd = String(dt.getDate()).padStart(2,'0');
+    var mm = String(dt.getMonth()+1).padStart(2,'0');
+    var yyyy = dt.getFullYear();
+    return dd + '-' + mm + '-' + yyyy;
+}
+
+// Convert Stayflexi time string ("2 PM", "5:30 AM") → 24hr "HH:MM:ss"
+function sfTimeTo24(timeStr, fallback) {
+    var s = (timeStr || fallback || '2 PM').trim();
+    var m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+    if (!m) return fallback === '11 AM' ? '11:00:00' : '14:00:00';
+    var h = parseInt(m[1], 10);
+    var min = m[2] ? parseInt(m[2], 10) : 0;
+    var ap = m[3].toUpperCase();
+    if (ap === 'PM' && h !== 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    return String(h).padStart(2,'0') + ':' + String(min).padStart(2,'0') + ':00';
+}
+
+// Fetch check-in/out times then availability when dates change for SF property
+async function sfOnDatesChange(cin, cout) {
+    if (!cin || !cout || !villaData || !villaData.stayflexi) return;
+    var hotelId = villaData.stayflexi.trim();
+    var cinFmt  = fmtSfDate(cin);
+    var coutFmt = fmtSfDate(cout);
+
+    // Fetch actual property check-in/check-out time slots
+    var cinTime24  = '14:00:00';
+    var coutTime24 = '11:00:00';
+    try {
+        var [ciT, coT] = await Promise.all([
+            sfFetch('/core/api/v1/beservice/hotelcheckin/?hotelId=' + hotelId + '&date=' + cinFmt),
+            sfFetch('/core/api/v1/beservice/hotelcheckout/?hotelId=' + hotelId + '&date=' + coutFmt)
+        ]);
+        var ciDisplay = ciT.afternoon || ciT.morning || ciT.night || '2 PM';
+        var coDisplay = coT.afternoon || coT.morning || coT.night || '11 AM';
+        cinTime24  = sfTimeTo24(ciDisplay, '2 PM');
+        coutTime24 = sfTimeTo24(coDisplay, '11 AM');
+        document.getElementById('sfCheckinTime').textContent  = ciDisplay;
+        document.getElementById('sfCheckoutTime').textContent = coDisplay;
+        document.getElementById('sfTimesBar').classList.remove('hidden');
+    } catch(e) { /* times optional, fall back to defaults above */ }
+
+    // Fetch availability — use real property check-in/check-out times, not hardcoded ones
+    var cinDT  = cinFmt  + ' ' + cinTime24;
+    var coutDT = coutFmt + ' ' + coutTime24;
+    document.getElementById('sfRoomCards').classList.remove('hidden');
+    document.getElementById('sfRoomList').innerHTML = '<div class="text-sm text-gray-400 animate-pulse py-4 text-center">Fetching live rates…</div>';
+
+    try {
+        var sfPath = '/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotelId
+            + '&checkin=' + encodeURIComponent(cinDT)
+            + '&checkout=' + encodeURIComponent(coutDT)
+            + '&discount=0';
+        var data = await sfFetch(sfPath);
+
+        // TEMP DEBUG — remove once live rooms confirmed working.
+        console.log('[SF DEBUG] request path:', sfPath);
+        console.log('[SF DEBUG] raw response:', data);
+
+        if (!data.roomTypeMap || !Object.keys(data.roomTypeMap).length) {
+            document.getElementById('sfRoomList').innerHTML =
+                '<div class="text-center py-6">'
+                + '<i class="fa-solid fa-calendar-xmark text-2xl text-red-300 mb-2"></i>'
+                + '<div class="text-sm font-bold text-red-500">These dates aren\'t available.</div>'
+                + '<div class="text-xs text-gray-400 mt-1">Please select different dates and try again.</div>'
+                + '</div>';
+            return;
+        }
+        var html = '';
+        var minPrice = null;
+        Object.values(data.roomTypeMap).forEach(function(room) {
+            // Docs: roomTypeMap[id].hidden — "yes"/"no". Hidden rooms shouldn't be sold via BE.
+            if (room.hidden === 'yes') return;
+            // Docs: combos is an array (per-slot for 3-slot hotels); for NOON/single-slot
+            // hotels (slotType from hotelcontent) there's exactly one entry — combos[0].
+            var combo = room.combos && room.combos[0];
+            var avail = combo ? combo.availableRooms : 0;
+            if (avail < 1) return;
+            (combo && combo.rates || []).slice(0,3).forEach(function(rate) {
+                var priceKey = sfGuests.adults + (sfGuests.children ? '+' + sfGuests.children : '');
+                var price = (rate.priceMap && rate.priceMap[priceKey]) || rate.price || 0;
+                if (price && (minPrice === null || price < minPrice)) minPrice = price;
+                html += '<div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 hover:border-amber-400 transition">'
+                    + '<div class="flex items-start justify-between mb-2">'
+                    + '<div><div class="font-black text-[#0f1f3d] text-sm">' + (room.roomTypeName||'Room') + '</div>'
+                    + '<div class="text-xs text-gray-400">' + (rate.ratePlanName||'Standard') + '</div></div>'
+                    + '<div class="text-right"><div class="text-lg font-black text-emerald-600">₹' + price.toLocaleString('en-IN') + '</div>'
+                    + '<div class="text-[10px] text-gray-400">' + avail + ' left</div></div>'
+                    + '</div>'
+                    + '<button onclick="selectSfRoom(' + JSON.stringify({
+                        roomTypeId: room.roomTypeId, roomTypeName: room.roomTypeName||'Room',
+                        ratePlanId: rate.ratePlanId, ratePlanName: rate.ratePlanName||'Standard',
+                        price: price, checkin: cinDT, checkout: coutDT,
+                        // ISO (YYYY-MM-DD) copies of the dates — checkin/checkout above are
+                        // DD-MM-YYYY (Stayflexi's format) which `new Date(...)` cannot parse
+                        // reliably, so nights-based math must use these instead.
+                        checkinISO: cin, checkoutISO: cout
+                    }).replace(/"/g,'&quot;') + ')" class="w-full mt-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2 rounded-xl transition">Select →</button>'
+                    + '</div>';
+            });
+        });
+        document.getElementById('sfRoomList').innerHTML = html || '<div class="text-sm text-red-400 font-semibold text-center py-4">No available rooms for these dates.</div>';
+
+        // Reflect live SF rate in the sticky sidebar/mobile price instead of
+        // leaving it stuck on the stored Mongo pricePerNight.
+        if (minPrice !== null) {
+            var nights = Math.max(1, Math.round((new Date(coutFmt.split('-').reverse().join('-')) - new Date(cinFmt.split('-').reverse().join('-'))) / 86400000));
+            var perNight = Math.round(minPrice / nights);
+            var rateStr = '₹' + perNight.toLocaleString('en-IN');
+            var stickyEl = document.getElementById('stickyRatePrint');
+            var mobileEl = document.getElementById('mobileStickyRate');
+            var sideEl   = document.getElementById('sideRatePrint');
+            if (stickyEl) stickyEl.textContent = rateStr;
+            if (mobileEl) mobileEl.textContent = rateStr;
+            if (sideEl)   sideEl.textContent   = rateStr;
+        }
+    } catch(err) {
+        document.getElementById('sfRoomList').innerHTML = '<div class="text-sm text-red-400 font-semibold text-center py-4">Error fetching rates: ' + err.message + '</div>';
     }
+}
 
-    document.getElementById('f_hot').checked = property ? !!property.hot : false;
-    setTags('amenity', property ? property.amenities : []);
-    document.getElementById('sfSyncStatus').classList.add('hidden');
-    document.getElementById('sfPreviewFrame').classList.add('hidden');
-    document.getElementById('sfPreviewIframe').src = '';
-    document.getElementById('propertyModal').classList.remove('hidden');
+function selectSfRoom(room) {
+    sfSelectedRoom = room;
+    document.getElementById('sfSelRoomName').textContent  = room.roomTypeName;
+    document.getElementById('sfSelRatePlan').textContent  = room.ratePlanName;
+    document.getElementById('sfSelTotal').textContent     = '₹' + room.price.toLocaleString('en-IN');
+    document.getElementById('sfSelectedRoom').classList.remove('hidden');
+    document.getElementById('sfBookCta').classList.remove('hidden');
+    // Hide the room list once something's selected, so there's only one box
+    // on screen (the selected-room summary) instead of the card + summary both showing.
+    document.getElementById('sfRoomCards').classList.add('hidden');
+}
+
+function clearSfSelection() {
+    sfSelectedRoom = null;
+    document.getElementById('sfSelectedRoom').classList.add('hidden');
+    document.getElementById('sfBookCta').classList.add('hidden');
+    // Bring the room list back so the guest can pick a different room.
+    document.getElementById('sfRoomCards').classList.remove('hidden');
+}
+
+function openSfBookingModal() {
+    if (!sfSelectedRoom) { scrollToSection('availability'); return; }
+    document.getElementById('sfModalRoom').textContent  = sfSelectedRoom.roomTypeName;
+    document.getElementById('sfModalPlan').textContent  = sfSelectedRoom.ratePlanName;
+    document.getElementById('sfModalDates').textContent = (checkIn||'') + ' → ' + (checkOut||'');
+    document.getElementById('sfModalTotal').textContent = '₹' + sfSelectedRoom.price.toLocaleString('en-IN');
+    document.getElementById('sfAdultsCount').textContent   = sfGuests.adults;
+    document.getElementById('sfChildrenCount').textContent = sfGuests.children;
+    document.getElementById('sfBookingModal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 }
 
-function closePropertyModal() {
-    document.getElementById('propertyModal').classList.add('hidden');
+function closeSfBookingModal() {
+    document.getElementById('sfBookingModal').classList.add('hidden');
     document.body.style.overflow = '';
 }
 
-async function saveProperty() {
-    var name = document.getElementById('f_name').value.trim();
-    var location = document.getElementById('f_location').value.trim();
-    var image = document.getElementById('f_image').value.trim();
-    var pricePerNight = parseFloat(document.getElementById('f_pricePerNight').value) || 0;
-    var guests = parseInt(document.getElementById('f_guests').value) || 0;
-    var bedrooms = parseInt(document.getElementById('f_bedrooms').value) || 0;
+function changeSfGuests(type, delta) {
+    if (type === 'adults')   sfGuests.adults   = Math.max(1, sfGuests.adults + delta);
+    if (type === 'children') sfGuests.children = Math.max(0, sfGuests.children + delta);
+    document.getElementById('sfAdultsCount').textContent   = sfGuests.adults;
+    document.getElementById('sfChildrenCount').textContent = sfGuests.children;
+}
 
-    if (!name || !location || !pricePerNight || !guests || !bedrooms) {
-        alert('Please fill in all required fields: Name, Location, Price, Guests, Bedrooms.');
-        return;
+async function executeSfBooking() {
+    if (!sfSelectedRoom) { alert('Please select a room first.'); return; }
+    var firstName = document.getElementById('sfGuestFirst')?.value.trim();
+    var lastName  = document.getElementById('sfGuestLast')?.value.trim();
+    var email     = document.getElementById('sfGuestEmail')?.value.trim();
+    var phone     = document.getElementById('sfGuestPhone')?.value.trim();
+    var address   = document.getElementById('sfGuestAddress')?.value.trim() || '';
+    var city      = document.getElementById('sfGuestCity')?.value.trim() || '';
+    var state     = document.getElementById('sfGuestState')?.value.trim() || '';
+    var zipcode   = document.getElementById('sfGuestZip')?.value.trim() || '';
+    var country   = document.getElementById('sfGuestCountry')?.value.trim() || 'India';
+    if (!firstName || !email || !phone) { alert('Please fill in your name, email, and phone.'); return; }
+
+    var btn = document.getElementById('sfBookSubmitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Confirming…';
+
+    function resetBtn() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">Confirm &amp; Pay via Razorpay</span>';
     }
-    // Block if main image still uploading to Cloudinary
-    var mainIndicator = document.getElementById('mainUploadIndicator');
-    if (mainIndicator && mainIndicator.textContent.includes('⏳')) {
-        alert('Please wait — main image still uploading to Cloudinary.');
-        return;
-    }
 
-    // Block save if any gallery images still uploading to Cloudinary
-    var pendingUploads = galleryImages.filter(function(g) { return g.status === 'uploading'; });
-    if (pendingUploads.length) {
-        alert('Please wait — ' + pendingUploads.length + ' image(s) still uploading to Cloudinary.');
-        return;
-    }
-    var galleryRaw = document.getElementById('f_gallery').value.trim();
-    var galleryUrls = galleryRaw ? galleryRaw.split('\n').map(s => s.trim()).filter(Boolean) : [];
-    // Use Cloudinary URLs from pre-uploaded images; fallback to localSrc if error
-    var galleryUploaded = galleryImages.map(function(g) { return g.cloudUrl || g.localSrc; }).filter(Boolean);
-    var gallery = galleryUploaded.concat(galleryUrls);
-    var weekendRate = parseFloat(document.getElementById('f_weekendRate').value) || pricePerNight;
+    // Booking is created on Stayflexi (as an enquiry, to hold the room and
+    // block the dates) AND saved locally. Payment itself goes through
+    // Razorpay directly — no Stayflexi hosted payment redirect. Once payment
+    // succeeds, the server confirms the Stayflexi enquiry via
+    // recordExternalPayment (see /api/payments/verify).
+    var nights = Math.max(1, Math.round((new Date(sfSelectedRoom.checkoutISO) - new Date(sfSelectedRoom.checkinISO)) / 86400000)) || 1;
+    var hotelId = villaData.stayflexi.trim();
 
-    var payload = {
-        name, location, image: image || (gallery[0] || ''),
-        pricePerNight, weekendRate, guests, bedrooms,
-        minStay: parseInt(document.getElementById('f_minStay').value) || 1,
-        securityDeposit: parseFloat(document.getElementById('f_securityDeposit').value) || 0,
-        rating: parseFloat(document.getElementById('f_rating').value) || 4.8,
-        pets: document.getElementById('f_pets').value,
-        stayflexi: document.getElementById('f_stayflexi').value.trim(),
-        description: document.getElementById('f_description').value.trim(),
-        gallery, amenities: tags.amenity,
-        videos: getVideoUrls(),
-        mapUrl: document.getElementById('f_mapUrl').value.trim(),
-        status: document.getElementById('f_status').value,
-        hot: document.getElementById('f_hot').checked,
-        type: document.getElementById('f_type').value,
-    };
-
-    var btn = document.querySelector('#propertyModal button[onclick="saveProperty()"]');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving…'; }
-
+    // 1) Create the enquiry on Stayflexi first — this holds the room against
+    // their inventory. We confirm it later (recordExternalPayment, server-side)
+    // once our own Razorpay payment succeeds, which is what blocks the dates
+    // on Stayflexi's calendar.
+    var stayflexiBookingId = null;
     try {
-        var url = editingPropertyId ? API + '/properties/' + editingPropertyId : API + '/properties';
-        var method = editingPropertyId ? 'PUT' : 'POST';
-        var res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (!res.ok) { var err = await res.json().catch(()=>({})); throw new Error(err.message || 'Server error ' + res.status); }
-        closePropertyModal();
-        loadProperties();
+        var sfRes = await fetch(getApiBase() + '/sf/create-enquiry-booking', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                hotelId: hotelId,
+                checkin: sfSelectedRoom.checkin, checkout: sfSelectedRoom.checkout,
+                roomTypeId: sfSelectedRoom.roomTypeId, ratePlanId: sfSelectedRoom.ratePlanId,
+                numAdults: sfGuests.adults, numChildren: sfGuests.children,
+                sellRate: sfSelectedRoom.price,
+                firstName: firstName, lastName: lastName, email: email, phone: '+91' + phone.replace(/\D/g, ''),
+                country: country, city: city, zipcode: zipcode, address: address, state: state
+            })
+        });
+        var sfData = await sfRes.json();
+        if (!sfData.success) throw new Error(sfData.message || 'Stayflexi booking failed');
+        stayflexiBookingId = sfData.stayflexiBookingId;
     } catch (err) {
-        alert('Error saving: ' + err.message);
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> <span id="savePropertyBtnLabel">' + (editingPropertyId ? 'Update Property' : 'Save Property') + '</span>'; }
+        alert('Booking failed: ' + err.message);
+        resetBtn();
+        return;
     }
-}
 
-function editProperty(id) {
-    var p = allProperties.find(function(x) { return x._id === id; });
-    if (p) openPropertyModal(p);
-}
-
-async function deleteProperty(id, name) {
-    if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+    // 2) Save locally, linked to the Stayflexi enquiry.
+    var bookingId;
     try {
-        var res = await fetch(API + '/properties/' + id, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Delete failed');
-        loadProperties();
-    } catch (err) { alert('Could not delete: ' + err.message); }
-}
-
-// ── Load Properties ──
-var allProperties = [];
-
-async function loadProperties() {
-    document.getElementById('propertiesTable').innerHTML = '<div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading…</div>';
-    try {
-        var res = await fetch(API + '/properties');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        allProperties = await res.json();
-
-        var total  = allProperties.length;
-        var active = allProperties.filter(p => p.status === 'Active').length;
-        var withSF = allProperties.filter(p => p.stayflexi && p.stayflexi.trim()).length;
-        var noSF   = total - withSF;
-
-        document.getElementById('totalPropsCount').textContent = total;
-        document.getElementById('activePropsCount').textContent = active;
-        document.getElementById('sfPropsCount').textContent = withSF;
-        document.getElementById('noSfPropsCount').textContent = noSF;
-
-        // Revenue: will be populated when bookings load
-        loadRevenueCard();
-
-        if (!allProperties.length) {
-            document.getElementById('propertiesTable').innerHTML = '<div class="p-12 text-center text-gray-400 text-sm">No properties yet. <button onclick="openPropertyModal()" class="text-amber-600 font-bold underline">Add one →</button></div>';
+        var bookRes = await fetch(getApiBase() + '/bookings', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                property: villaData._id, propertyName: villaData.name,
+                guestName: (firstName + ' ' + lastName).trim(), guestEmail: email, guestPhone: phone,
+                checkIn: sfSelectedRoom.checkin, checkOut: sfSelectedRoom.checkout, nights: nights,
+                adults: sfGuests.adults, children: sfGuests.children, infants: 0,
+                pricePerNight: villaData.pricePerNight || 0,
+                baseAmount: sfSelectedRoom.price, addonAmount: 0, taxAmount: 0,
+                totalAmount: sfSelectedRoom.price, amount: sfSelectedRoom.price,
+                status: 'Pending', paid: false,
+                stayflexiBookingId: stayflexiBookingId, stayflexiHotelId: hotelId,
+                roomTypeId: sfSelectedRoom.roomTypeId, ratePlanId: sfSelectedRoom.ratePlanId
+            })
+        });
+        if (bookRes.status === 409) {
+            var conflict = await bookRes.json();
+            alert('❌ ' + conflict.message);
+            resetBtn();
             return;
         }
-
-        var rows = allProperties.map(function(p) {
-            var sfId = (p.stayflexi || '').trim();
-            var sfBadge = sfId
-                ? '<span class="sf-badge flex items-center gap-1"><i class="fa-solid fa-bolt text-emerald-600 text-[9px]"></i>' + sfId + '</span>'
-                : '<span class="no-sf-badge">Custom Form</span>';
-            var statusColor = p.status === 'Active' ? 'text-emerald-700 bg-emerald-50' : p.status === 'Inactive' ? 'text-red-600 bg-red-50' : 'text-amber-700 bg-amber-50';
-            return '<tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">'
-                + '<td class="px-4 py-3.5"><div class="flex items-center gap-3"><img src="' + (p.image||'') + '" class="w-12 h-10 rounded-xl object-cover bg-gray-100 shrink-0" onerror="this.src=\'\'"><div><div class="text-sm font-bold text-[#0f1f3d] line-clamp-1">' + (p.name||'—') + '</div><div class="text-xs text-gray-400 font-medium">' + (p.location||'—') + '</div></div></div></td>'
-                + '<td class="px-4 py-3.5 text-sm text-gray-600 font-semibold">₹' + (p.pricePerNight||0).toLocaleString('en-IN') + '<span class="text-xs text-gray-400 font-normal">/nt</span></td>'
-                + '<td class="px-4 py-3.5 text-xs text-gray-500 font-semibold">' + (p.guests||'—') + ' guests · ' + (p.bedrooms||'—') + ' BR</td>'
-                + '<td class="px-4 py-3.5">' + sfBadge + '</td>'
-                + '<td class="px-4 py-3.5"><span class="text-xs font-bold px-2.5 py-1 rounded-full ' + statusColor + '">' + (p.status||'Active') + '</span></td>'
-                + '<td class="px-4 py-3.5"><div class="flex items-center gap-2">'
-                + '<button onclick="viewProperty(\''+p._id+'\')" class="btn-ghost py-1.5 px-3 text-[11px]"><i class="fa-solid fa-eye mr-1"></i>View</button>'
-                + '<button onclick=\'editProperty("' + p._id + '")\' class="btn-ghost py-1.5 px-3 text-[11px]"><i class="fa-solid fa-pen mr-1"></i>Edit</button>'
-                + '<button onclick="deleteProperty(\'' + p._id + '\',\'' + (p.name||'').replace(/'/g,"\\'") + '\')" class="btn-danger py-1.5 px-3"><i class="fa-solid fa-trash-can"></i></button>'
-                + '</div></td></tr>';
-        }).join('');
-
-        document.getElementById('propertiesTable').innerHTML =
-            '<table class="w-full text-left"><thead><tr class="border-b border-gray-100">'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Property</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Price</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Capacity</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Stayflexi</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Status</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Actions</th>'
-            + '</tr></thead><tbody>' + rows + '</tbody></table>';
-
-    } catch (err) {
-        document.getElementById('propertiesTable').innerHTML =
-            '<div class="p-8 text-center text-red-400 text-sm font-semibold">Failed to load: ' + err.message +
-            '<br><button onclick="loadProperties()" class="mt-3 text-indigo-600 underline font-bold text-xs">Retry</button></div>';
-    }
-}
-
-// ── Revenue Card ──
-var allBookings = [];
-async function loadRevenueCard() {
-    try {
-        var res = await fetch(API + '/bookings');
-        if (!res.ok) return;
-        allBookings = await res.json();
-        var total = allBookings.reduce(function(s, b) { return s + (b.totalAmount || b.amount || 0); }, 0);
-        document.getElementById('totalRevenue').textContent = '₹' + total.toLocaleString('en-IN');
-    } catch(e) {}
-}
-
-// ── Load Bookings ──
-async function loadBookings() {
-    document.getElementById('bookingsTable').innerHTML = '<div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading…</div>';
-    try {
-        var res = await fetch(API + '/bookings');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        allBookings = await res.json();
-        if (!allBookings.length) {
-            document.getElementById('bookingsTable').innerHTML = '<div class="p-12 text-center text-gray-400 text-sm">No bookings yet.</div>';
-            return;
+        if (!bookRes.ok) {
+            var berr = await bookRes.json().catch(function(){ return {}; });
+            throw new Error(berr.message || 'Could not save booking');
         }
-        var rows = allBookings.map(function(b) {
-            var sc = {pending:'text-amber-700 bg-amber-50',Pending:'text-amber-700 bg-amber-50',confirmed:'text-emerald-700 bg-emerald-50',Confirmed:'text-emerald-700 bg-emerald-50',cancelled:'text-red-600 bg-red-50',Cancelled:'text-red-600 bg-red-50'}[b.status] || 'text-gray-600 bg-gray-50';
-            var payBadge = b.paymentStatus === 'paid'
-                ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50 ml-1"><i class="fa-solid fa-circle-check"></i> Paid</span>'
-                : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-700 bg-amber-50 ml-1">Unpaid</span>';
-            return '<tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">'
-                + '<td class="px-4 py-3.5"><div class="text-xs font-black text-[#0f1f3d]">' + (b.bookingRef||b._id.slice(-6)) + '</div><div class="text-[10px] text-gray-400 mt-0.5">' + new Date(b.createdAt).toLocaleDateString('en-IN') + '</div></td>'
-                + '<td class="px-4 py-3.5"><div class="text-sm font-bold text-gray-800">' + (b.guestName||'—') + '</div><div class="text-xs text-gray-400">' + (b.guestEmail||'') + '</div></td>'
-                + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.propertyName||'—') + '</td>'
-                + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.checkIn||'—') + ' → ' + (b.checkOut||'—') + '<div class="text-[10px] text-gray-400 mt-0.5">' + (b.nights||0) + ' night' + (b.nights!==1?'s':'') + '</div></td>'
-                + '<td class="px-4 py-3.5 text-sm font-black text-[#0f1f3d]">₹' + (b.totalAmount||b.amount||0).toLocaleString('en-IN') + '</td>'
-                + '<td class="px-4 py-3.5"><span class="text-xs font-bold px-2.5 py-1 rounded-full ' + sc + '">' + (b.status||'pending') + '</span>' + payBadge + '</td>'
-                + '<td class="px-4 py-3.5"><div class="flex gap-1.5 flex-wrap">'
-                + '<button onclick="updateBookingStatus(\'' + b._id + '\',\'confirmed\')" class="btn-ghost py-1 px-2 text-[10px] text-emerald-700 border-emerald-200">✓ Confirm</button>'
-                + '<button onclick="updateBookingStatus(\'' + b._id + '\',\'cancelled\')" class="btn-ghost py-1 px-2 text-[10px] text-red-600 border-red-200">✗ Cancel</button>'
-                + (b.paymentStatus !== 'paid' ? '<button onclick="generatePaymentLink(\'' + b._id + '\')" class="btn-ghost py-1 px-2 text-[10px] text-indigo-700 border-indigo-200"><i class="fa-solid fa-link"></i> Payment Link</button>' : '')
-                + '</div></td>'
-                + '</tr>';
-        }).join('');
-
-        document.getElementById('bookingsTable').innerHTML =
-            '<table class="w-full text-left"><thead><tr class="border-b border-gray-100">'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Ref</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Guest</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Property</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Dates</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Amount</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Status</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Actions</th>'
-            + '</tr></thead><tbody>' + rows + '</tbody></table>';
+        var bookData = await bookRes.json();
+        bookingId = bookData.booking?._id || bookData.bookingId;
     } catch (err) {
-        document.getElementById('bookingsTable').innerHTML = '<div class="p-8 text-center text-red-400 text-sm font-semibold">Failed to load: ' + err.message + '</div>';
+        alert('Booking failed: ' + err.message);
+        resetBtn();
+        return;
     }
-}
 
-async function updateBookingStatus(id, status) {
+    // Create the Razorpay order server-side (needs the secret key, so it can't happen in-browser).
+    var order;
     try {
-        var res = await fetch(API + '/bookings/' + id + '/status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
-        if (!res.ok) throw new Error('Update failed');
-        loadBookings();
-    } catch (err) { alert('Error: ' + err.message); }
-}
-
-async function generatePaymentLink(bookingId) {
-    try {
-        var res = await fetch(API + '/payments/create-link', {
+        var orderRes = await fetch(getApiBase() + '/payments/create-order', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ bookingId: bookingId })
         });
-        var data = await res.json();
-        if (!res.ok || !data.success) throw new Error(data.message || 'Could not generate payment link.');
-        if (navigator.clipboard) {
-            navigator.clipboard.writeText(data.linkUrl).catch(function(){});
-        }
-        prompt('Payment link generated (copied to clipboard). Send this to the guest:', data.linkUrl);
+        order = await orderRes.json();
+        if (!order.success) throw new Error(order.message || 'Could not start payment');
     } catch (err) {
-        alert('Error: ' + err.message);
+        alert('Payment setup failed: ' + err.message);
+        resetBtn();
+        return;
     }
+
+    // Open Razorpay Checkout directly — no redirect to any Stayflexi page.
+    var rzp = new Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: 'StellarStays',
+        description: villaData.name,
+        prefill: { name: (firstName + ' ' + lastName).trim(), email: email, contact: phone },
+        theme: { color: '#0f1f3d' },
+        handler: async function (response) {
+            try {
+                var verifyRes = await fetch(getApiBase() + '/payments/verify', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bookingId: bookingId,
+                        razorpay_order_id: response.razorpay_order_id,
+                        razorpay_payment_id: response.razorpay_payment_id,
+                        razorpay_signature: response.razorpay_signature
+                    })
+                });
+                var verifyData = await verifyRes.json();
+                if (!verifyData.success) throw new Error(verifyData.message || 'Payment verification failed');
+                window.location.href = 'confirmation.html?bookingId=' + encodeURIComponent(bookingId);
+            } catch (err) {
+                alert('Payment succeeded but confirmation failed: ' + err.message + '\n\nPlease contact us with your payment ID: ' + response.razorpay_payment_id);
+                resetBtn();
+            }
+        },
+        modal: {
+            ondismiss: function () { resetBtn(); }
+        }
+    });
+    rzp.on('payment.failed', function (resp) {
+        alert('Payment failed: ' + (resp.error && resp.error.description ? resp.error.description : 'Please try again.'));
+        resetBtn();
+    });
+    rzp.open();
 }
 
-// ── SF Import Modal ──
-function openSfImportModal() { document.getElementById('sfImportModal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
-function closeSfImportModal() { document.getElementById('sfImportModal').classList.add('hidden'); document.body.style.overflow = ''; }
-
-async function fetchSfHotelsForImport() {
-    if (!SF_GROUP_ID) { alert('Set Group ID in sidebar first.'); return; }
-    document.getElementById('sfImportList').innerHTML = '<div class="text-sm text-gray-400 animate-pulse text-center py-8">Fetching from Stayflexi…</div>';
-    try {
-        var hotels = await sfFetch('/core/api/v1/beservice/grouphotels?groupId=' + SF_GROUP_ID);
-        if (!hotels.length) { document.getElementById('sfImportList').innerHTML = '<div class="text-sm text-gray-400 text-center py-8">No hotels found in this group.</div>'; return; }
-        var html = '<div class="space-y-3">';
-        hotels.forEach(function(h) {
-            html += '<div class="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:bg-gray-50">'
-                + '<div>'
-                    + '<div class="font-bold text-[#0f1f3d] text-sm">' + (h.hotelName||'Hotel') + '</div>'
-                    + '<div class="text-xs text-gray-400">' + h.hotelCity + ', ' + h.hotelState + ' · ID: ' + h.hotelId + '</div>'
-                + '</div>'
-                + '<button onclick="importSfHotel(' + JSON.stringify(h).replace(/"/g,'&quot;') + ')" class="btn-green text-xs py-1.5 px-4">Import</button>'
-                + '</div>';
-        });
-        html += '</div>';
-        document.getElementById('sfImportList').innerHTML = html;
-    } catch (err) {
-        document.getElementById('sfImportList').innerHTML = '<div class="text-red-400 text-sm text-center py-8">Error: ' + err.message + '</div>';
-    }
-}
-
-async function importSfHotel(hotel) {
-    // Try to get full content
-    try {
-        var content = await sfFetch('/core/api/v1/beservice/hotelcontent?hotelId=' + hotel.hotelId);
-        openPropertyModal();
-        closeSfImportModal();
-        // Pre-fill
-        document.getElementById('f_name').value = content.propertyName || hotel.hotelName;
-        document.getElementById('f_location').value = (content.city||hotel.hotelCity) + ', ' + (content.state||hotel.hotelState);
-        document.getElementById('f_description').value = content.propertyDescription || '';
-        document.getElementById('f_rating').value = content.propertyRating || 4.5;
-        document.getElementById('f_stayflexi').value = hotel.hotelId;
-        if (content.hotelImages && content.hotelImages[0]) {
-            document.getElementById('f_image').value = content.hotelImages[0];
-            document.getElementById('mainImageThumb').src = content.hotelImages[0];
-            document.getElementById('mainImagePreview').classList.remove('hidden');
-        }
-        if (content.hotelImages && content.hotelImages.length > 1) {
-            document.getElementById('f_gallery').value = content.hotelImages.slice(1).join('\n');
-        }
-        if (content.hotelAmenities && content.hotelAmenities[0]) {
-            setTags('amenity', Object.keys(content.hotelAmenities[0]));
-        }
-        document.getElementById('f_type').value = 'Hotel';
-
-        // ── Bedrooms: SF has no "bedrooms" concept (it's room-inventory based, not villa-based).
-        // Property names carry it e.g. "Tucson 3BHK with Pvt Pool" — extract the number.
-        var bhkMatch = /(\d+)\s*BHK/i.exec(content.propertyName || hotel.hotelName || '');
-        var bedrooms = bhkMatch ? parseInt(bhkMatch[1]) : 1;
-        document.getElementById('f_bedrooms').value = bedrooms;
-
-        // ── Guests: pull from first room type's max occupancy, fallback to 2x bedrooms.
-        var firstRoomType = content.roomTypeList && content.roomTypeList[0];
-        var guests = firstRoomType ? parseInt(firstRoomType.maxOccupants || firstRoomType.maxPossible || 0) : 0;
-        document.getElementById('f_guests').value = guests || (bedrooms * 2);
-
-        // ── Price: hotelcontent doesn't include live rates — needs a real check-in/out window.
-        // Fetch tomorrow → day-after as a representative rate.
-        var priceWarning = document.getElementById('sfPriceImportWarning');
-        if (priceWarning) priceWarning.classList.add('hidden');
-        var pad = function(n) { return String(n).padStart(2, '0'); };
-        var fmt = function(d, time) { return pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear() + ' ' + time; };
-        var extractRate = function(avail) {
-            if (!avail) return 0;
-            // ── Primary source: SF returns the lowest available rate for the
-            // requested dates directly at the top level (rate / actualRate).
-            // This reflects availability across ALL room types, not just one.
-            if (avail.rate) return avail.rate;
-            if (avail.actualRate) return avail.actualRate;
-            // ── Fallback: dig into roomTypeMap. Only used if SF omits the
-            // top-level fields. NOTE: this checks every room type, not just
-            // the first — the first one alone may be stop-sold/restricted
-            // for the requested dates (common on weekends), even though
-            // other room types are available.
-            if (!avail.roomTypeMap) return 0;
-            for (var rtId in avail.roomTypeMap) {
-                var room = avail.roomTypeMap[rtId];
-                var combo = room && room.combos && room.combos[0];
-                var price = combo && combo.rates && combo.rates[0] && combo.rates[0].price;
-                if (price) return price;
-            }
-            return 0;
-        };
-        // ── When no rate comes back, figure out WHY so the warning banner is
-        // actionable instead of generic.
-        var diagnoseNoRate = function(avail) {
-            if (!avail) return 'Stayflexi returned no data for this date.';
-            if (!avail.roomTypeMap || !Object.keys(avail.roomTypeMap).length) {
-                return 'No room types returned by Stayflexi for this date — likely a stop-sell, closed-on-arrival, or minimum-length-of-stay restriction set on this property for that day.';
-            }
-            var sawCombo = false;
-            for (var rtId in avail.roomTypeMap) {
-                var room = avail.roomTypeMap[rtId];
-                if (room && room.combos && room.combos.length) {
-                    sawCombo = true;
-                    if (room.combos[0].availableRooms === 0) {
-                        return 'Room type "' + (room.roomTypeName || rtId) + '" is sold out for this date.';
-                    }
-                }
-            }
-            if (!sawCombo) {
-                return 'No availability combos returned — likely a stop-sell, closed-on-arrival, or minimum-length-of-stay restriction for that day (common for Saturday check-ins). Check the room\u2019s restrictions in the Stayflexi dashboard/calendar.';
-            }
-            return 'No sellable rate returned by Stayflexi for this date.';
-        };
-        // Find the next weekday night (Tue checkin) and the next Saturday night,
-        // so the weekday/weekend rates we pull are actually representative.
-        var nextDow = function(fromDate, targetDow) {
-            var d = new Date(fromDate);
-            var diff = (targetDow - d.getDay() + 7) % 7;
-            d.setDate(d.getDate() + (diff === 0 ? 7 : diff));
-            return d;
-        };
-        var today = new Date();
-        var weekdayIn = nextDow(today, 2); // next Tuesday, safely mid-week
-        var weekdayOut = new Date(weekdayIn); weekdayOut.setDate(weekdayOut.getDate() + 1);
-        var weekendIn = nextDow(today, 6); // next Saturday
-        var weekendOut = new Date(weekendIn); weekendOut.setDate(weekendOut.getDate() + 1);
-
-        try {
-            var weekdayAvail = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotel.hotelId
-                + '&checkin=' + encodeURIComponent(fmt(weekdayIn, '14:00:00'))
-                + '&checkout=' + encodeURIComponent(fmt(weekdayOut, '12:00:00'))
-                + '&discount=0');
-            var weekdayRate = extractRate(weekdayAvail);
-            if (weekdayRate) {
-                document.getElementById('f_pricePerNight').value = Math.round(weekdayRate);
-            } else if (priceWarning) {
-                var weekdayReason = diagnoseNoRate(weekdayAvail);
-                console.warn('Weekday rate not returned:', weekdayReason, weekdayAvail);
-                priceWarning.textContent = '⚠ Weekday rate: ' + weekdayReason + ' Enter manually.';
-                priceWarning.classList.remove('hidden');
-            }
-        } catch (e) {
-            console.warn('Could not fetch live weekday rate, leave price for manual entry:', e.message);
-            if (priceWarning) {
-                priceWarning.textContent = '⚠ Weekday rate: Stayflexi API call failed (' + e.message + '). Enter manually.';
-                priceWarning.classList.remove('hidden');
-            }
-        }
-
-        try {
-            var weekendAvail = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + hotel.hotelId
-                + '&checkin=' + encodeURIComponent(fmt(weekendIn, '14:00:00'))
-                + '&checkout=' + encodeURIComponent(fmt(weekendOut, '12:00:00'))
-                + '&discount=0');
-            var weekendRate = extractRate(weekendAvail);
-            if (weekendRate) {
-                document.getElementById('f_weekendRate').value = Math.round(weekendRate);
-            } else if (priceWarning) {
-                var weekendReason = diagnoseNoRate(weekendAvail);
-                console.warn('Weekend rate not returned:', weekendReason, weekendAvail);
-                var existing = priceWarning.textContent && !priceWarning.classList.contains('hidden') ? priceWarning.textContent + ' ' : '⚠ ';
-                priceWarning.textContent = existing + 'Weekend rate: ' + weekendReason + ' Enter manually.';
-                priceWarning.classList.remove('hidden');
-            }
-        } catch (e) {
-            console.warn('Could not fetch live weekend rate, leave weekend price for manual entry:', e.message);
-            if (priceWarning) {
-                var existingErr = priceWarning.textContent && !priceWarning.classList.contains('hidden') ? priceWarning.textContent + ' ' : '⚠ ';
-                priceWarning.textContent = existingErr + 'Weekend rate: Stayflexi API call failed (' + e.message + '). Enter manually.';
-                priceWarning.classList.remove('hidden');
-            }
-        }
-    } catch(e) {
-        // Basic import without full content
-        openPropertyModal();
-        closeSfImportModal();
-        document.getElementById('f_name').value = hotel.hotelName;
-        document.getElementById('f_location').value = hotel.hotelCity + ', ' + hotel.hotelState;
-        document.getElementById('f_stayflexi').value = hotel.hotelId;
-    }
-}
-
-// ══════════════════════════════════════
-// ── Analytics Tab ──
-// ══════════════════════════════════════
-var revenueChartInst = null, statusChartInst = null;
-
-async function loadAnalytics() {
-    try {
-        var res = await fetch(API + '/bookings');
-        if (!res.ok) return;
-        var bookings = await res.json();
-
-        var total = bookings.reduce(function(s,b) { return s+(b.totalAmount||b.amount||0); }, 0);
-        var confirmed = bookings.filter(b => b.status==='confirmed'||b.status==='Confirmed').length;
-        var avg = bookings.length ? Math.round(total/bookings.length) : 0;
-
-        document.getElementById('ana_revenue').textContent = '₹' + total.toLocaleString('en-IN');
-        document.getElementById('ana_bookings').textContent = bookings.length;
-        document.getElementById('ana_confirmed').textContent = confirmed;
-        document.getElementById('ana_avg').textContent = '₹' + avg.toLocaleString('en-IN');
-        document.getElementById('totalRevenue').textContent = '₹' + total.toLocaleString('en-IN');
-
-        // Revenue by month
-        var months = {};
-        bookings.forEach(function(b) {
-            var d = new Date(b.createdAt);
-            var key = d.toLocaleString('en-IN', {month:'short', year:'numeric'});
-            months[key] = (months[key]||0) + (b.totalAmount||b.amount||0);
-        });
-        var mKeys = Object.keys(months).slice(-6);
-        var mVals = mKeys.map(k => months[k]);
-
-        if (revenueChartInst) revenueChartInst.destroy();
-        revenueChartInst = new Chart(document.getElementById('revenueChart'), {
-            type: 'bar',
-            data: {
-                labels: mKeys.length ? mKeys : ['No data'],
-                datasets: [{ label: 'Revenue (₹)', data: mVals.length ? mVals : [0], backgroundColor: '#0f1f3d', borderRadius: 8 }]
-            },
-            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-        });
-
-        // Status donut
-        var statuses = {};
-        bookings.forEach(function(b) { var s = (b.status||'pending').toLowerCase(); statuses[s] = (statuses[s]||0)+1; });
-        if (statusChartInst) statusChartInst.destroy();
-        statusChartInst = new Chart(document.getElementById('statusChart'), {
-            type: 'doughnut',
-            data: {
-                labels: Object.keys(statuses).map(s => s.charAt(0).toUpperCase()+s.slice(1)),
-                datasets: [{ data: Object.values(statuses), backgroundColor: ['#10b981','#f59e0b','#ef4444','#94a3b8'] }]
-            },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-        });
-
-        // Top props
-        var propRevenue = {};
-        bookings.forEach(function(b) {
-            var n = b.propertyName || 'Unknown';
-            propRevenue[n] = (propRevenue[n]||0) + (b.totalAmount||b.amount||0);
-        });
-        var sorted = Object.entries(propRevenue).sort((a,b)=>b[1]-a[1]).slice(0,5);
-        if (sorted.length) {
-            var maxRev = sorted[0][1];
-            document.getElementById('topPropsTable').innerHTML = sorted.map(function([name, rev]) {
-                var pct = Math.round((rev/maxRev)*100);
-                return '<div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">'
-                    + '<div class="text-sm font-bold text-gray-800 w-48 truncate">' + name + '</div>'
-                    + '<div class="flex-1 bg-gray-100 rounded-full h-2"><div class="bg-indigo-600 h-2 rounded-full" style="width:'+pct+'%"></div></div>'
-                    + '<div class="text-sm font-black text-indigo-700 w-28 text-right">₹' + rev.toLocaleString('en-IN') + '</div>'
-                    + '</div>';
-            }).join('');
-        } else {
-            document.getElementById('topPropsTable').innerHTML = '<div class="text-gray-400 text-sm text-center py-6">No booking data yet.</div>';
-        }
-    } catch (err) {
-        console.error('Analytics error:', err);
-    }
-}
-
-// ── Init ──
-checkServer();
-loadProperties();
+window.addEventListener('load', loadBookingPage);
 </script>
 
-
-<!-- ═══ PROPERTY VIEW MODAL ═══ -->
-<div id="propertyViewModal" class="modal-overlay hidden">
-    <div class="modal-box-lg" style="max-width:860px;">
-        <div class="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
-            <h2 class="text-lg font-black text-[#0f1f3d]" id="viewModalTitle">Property Details</h2>
-            <div class="flex gap-2">
-                <button id="viewEditBtn" class="btn-amber text-xs flex items-center gap-1.5"><i class="fa-solid fa-pen text-xs"></i> Edit</button>
-                <button onclick="closePropertyViewModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-        </div>
-        <div id="propertyViewBody" class="p-5 space-y-5"></div>
-    </div>
-</div>
 </body>
 </html>
