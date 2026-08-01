@@ -16,6 +16,67 @@ function handle(fn) {
     };
 }
 
+// POST /api/sf/create-enquiry-booking
+// Creates the booking on Stayflexi as an "enquiry" (isEnquiry: true), which
+// holds the room without confirming it. We confirm it ourselves later via
+// /api/payments/verify -> recordExternalPayment, once our own Razorpay
+// payment succeeds. This is Stayflexi's documented flow for hotels using
+// their own/custom payment gateway instead of Stayflexi's hosted redirect.
+router.post("/create-enquiry-booking", async (req, res) => {
+    try {
+        const {
+            hotelId, checkin, checkout, roomTypeId, ratePlanId,
+            numAdults, numChildren, sellRate,
+            firstName, lastName, email, phone,
+            country, city, zipcode, address, state,
+        } = req.body;
+
+        if (!hotelId || !checkin || !checkout || !roomTypeId || !ratePlanId || !sellRate || !email || !phone) {
+            return res.status(400).json({ success: false, message: "Missing required booking fields" });
+        }
+
+        const payload = {
+            checkin, checkout,
+            hotelId: parseInt(hotelId),
+            bookingStatus: "CONFIRMED",   // Stayflexi field name is misleading — isEnquiry below is what actually matters
+            bookingSource: "STAYFLEXI_OD",
+            roomStays: [{
+                numAdults: numAdults || 1,
+                numChildren: numChildren || 0,
+                numChildren1: 0,
+                roomTypeId, ratePlanId,
+            }],
+            ctaId: "",
+            customerDetails: {
+                firstName, lastName: lastName || "",
+                emailId: email,
+                phoneNumber: phone,
+                country: country || "", city: city || "",
+                zipcode: zipcode || "", address: address || "", state: state || "",
+            },
+            paymentDetails: {
+                sellRate, roomRate: sellRate,
+                payAtHotel: false,
+            },
+            promoInfo: {}, specialRequests: "",
+            requestToBook: false, isAddOnPresent: true, posOrderList: [],
+            isInsured: false, refundableBookingFee: 0,
+            appliedPromocode: "", promoAmount: 0, bookingFees: 0,
+            isEnquiry: true, isExternalPayment: false,
+        };
+
+        const data = await sf.performBooking(payload);
+        if (!data.status) {
+            return res.status(400).json({ success: false, message: data.message || "Stayflexi booking failed" });
+        }
+
+        res.json({ success: true, stayflexiBookingId: data.bookingId });
+    } catch (err) {
+        console.error("[SF create-enquiry-booking] error:", err.message);
+        res.status(err.status || 500).json({ success: false, message: err.message });
+    }
+});
+
 // GET /api/sf/group-hotels
 router.get("/group-hotels", handle(() => sf.getGroupHotels()));
 
