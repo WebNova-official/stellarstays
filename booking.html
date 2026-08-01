@@ -1209,17 +1209,42 @@ async function executeSfBooking() {
         btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> <span id="sfBookSubmitBtnLabel">Confirm &amp; Pay via Razorpay</span>';
     }
 
-    // Stayflexi is only used above this point to fetch room/rate/availability data.
-    // Booking + payment are entirely ours: save to our own DB, take payment
-    // through Razorpay directly (no Stayflexi hosted redirect involved), then
-    // mark it paid once Razorpay confirms the signature server-side.
-
-    // Use the ISO (YYYY-MM-DD) dates for this math, not sfSelectedRoom.checkin/checkout —
-    // those are DD-MM-YYYY (Stayflexi's format), which `new Date(...)` parses inconsistently
-    // (often as Invalid Date, or silently misread as MM-DD-YYYY), which was making every
-    // booking record itself as 1 night regardless of the actual stay length.
+    // Booking is created on Stayflexi (as an enquiry, to hold the room and
+    // block the dates) AND saved locally. Payment itself goes through
+    // Razorpay directly — no Stayflexi hosted payment redirect. Once payment
+    // succeeds, the server confirms the Stayflexi enquiry via
+    // recordExternalPayment (see /api/payments/verify).
     var nights = Math.max(1, Math.round((new Date(sfSelectedRoom.checkoutISO) - new Date(sfSelectedRoom.checkinISO)) / 86400000)) || 1;
+    var hotelId = villaData.stayflexi.trim();
 
+    // 1) Create the enquiry on Stayflexi first — this holds the room against
+    // their inventory. We confirm it later (recordExternalPayment, server-side)
+    // once our own Razorpay payment succeeds, which is what blocks the dates
+    // on Stayflexi's calendar.
+    var stayflexiBookingId = null;
+    try {
+        var sfRes = await fetch(getApiBase() + '/sf/create-enquiry-booking', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                hotelId: hotelId,
+                checkin: sfSelectedRoom.checkin, checkout: sfSelectedRoom.checkout,
+                roomTypeId: sfSelectedRoom.roomTypeId, ratePlanId: sfSelectedRoom.ratePlanId,
+                numAdults: sfGuests.adults, numChildren: sfGuests.children,
+                sellRate: sfSelectedRoom.price,
+                firstName: firstName, lastName: lastName, email: email, phone: '+91' + phone.replace(/\D/g, ''),
+                country: country, city: city, zipcode: zipcode, address: address, state: state
+            })
+        });
+        var sfData = await sfRes.json();
+        if (!sfData.success) throw new Error(sfData.message || 'Stayflexi booking failed');
+        stayflexiBookingId = sfData.stayflexiBookingId;
+    } catch (err) {
+        alert('Booking failed: ' + err.message);
+        resetBtn();
+        return;
+    }
+
+    // 2) Save locally, linked to the Stayflexi enquiry.
     var bookingId;
     try {
         var bookRes = await fetch(getApiBase() + '/bookings', {
@@ -1232,7 +1257,9 @@ async function executeSfBooking() {
                 pricePerNight: villaData.pricePerNight || 0,
                 baseAmount: sfSelectedRoom.price, addonAmount: 0, taxAmount: 0,
                 totalAmount: sfSelectedRoom.price, amount: sfSelectedRoom.price,
-                status: 'Pending', paid: false
+                status: 'Pending', paid: false,
+                stayflexiBookingId: stayflexiBookingId, stayflexiHotelId: hotelId,
+                roomTypeId: sfSelectedRoom.roomTypeId, ratePlanId: sfSelectedRoom.ratePlanId
             })
         });
         if (bookRes.status === 409) {
