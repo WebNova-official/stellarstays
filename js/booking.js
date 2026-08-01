@@ -270,11 +270,19 @@ async function refreshLiveRate(checkInDate, checkOutDate) {
             + '&checkin=' + encodeURIComponent(fmtSfDateTime(checkInDate, '14:00:00'))
             + '&checkout=' + encodeURIComponent(fmtSfDateTime(checkOutDate, '11:00:00'))
             + '&discount=0');
-        let liveRate = 0;
-        if (avail.roomTypeMap) {
-            const firstRoom = Object.values(avail.roomTypeMap)[0];
-            const combo = firstRoom && firstRoom.combos && firstRoom.combos[0];
-            liveRate = (combo && combo.rates && combo.rates[0] && combo.rates[0].price) || 0;
+        // ── Primary source: SF returns the lowest available rate for the
+        // requested dates directly at the top level (rate / actualRate).
+        // This reflects availability across ALL room types and already
+        // factors in SF's own weekday/weekend pricing calendar — not just
+        // the first room type in roomTypeMap, which may be restricted.
+        let liveRate = avail.rate || avail.actualRate || 0;
+        if (!liveRate && avail.roomTypeMap) {
+            for (const rtId in avail.roomTypeMap) {
+                const room = avail.roomTypeMap[rtId];
+                const combo = room && room.combos && room.combos[0];
+                const price = combo && combo.rates && combo.rates[0] && combo.rates[0].price;
+                if (price) { liveRate = price; break; }
+            }
         }
         if (liveRate) {
             activeVilla.pricePerNight = Math.round(liveRate);
@@ -289,16 +297,72 @@ async function refreshLiveRate(checkInDate, checkOutDate) {
 }
 
 // ==========================================
+// WEEKDAY / WEEKEND NIGHTLY BREAKDOWN
+// Only used for properties WITHOUT a Stayflexi link — those get a single
+// live blended rate straight from Stayflexi's own calendar (which already
+// bakes in its own weekend pricing). Self-managed properties instead use
+// the pricePerNight / weekendRate fields set in the admin panel, applied
+// per night based on day of week. Friday & Saturday nights count as
+// "weekend" — the standard convention for Indian villa stays.
+// ==========================================
+function isWeekendNight(date) {
+    const dow = date.getDay(); // 0=Sun ... 6=Sat
+    return dow === 5 || dow === 6; // Friday, Saturday
+}
+
+function computeNightlyBreakdown(checkInDate, checkOutDate) {
+    let total = 0, weekdayNights = 0, weekendNights = 0;
+    const cursor = new Date(checkInDate);
+    while (cursor < checkOutDate) {
+        if (isWeekendNight(cursor)) {
+            total += (activeVilla.weekendRate || activeVilla.pricePerNight || 0);
+            weekendNights++;
+        } else {
+            total += (activeVilla.pricePerNight || 0);
+            weekdayNights++;
+        }
+        cursor.setDate(cursor.getDate() + 1);
+    }
+    return { total, weekdayNights, weekendNights };
+}
+
+// ==========================================
 // PRICE CALCULATION
 // ==========================================
 function calculateTotal() {
     if (!activeVilla) return;
 
-    const baseCost = (activeVilla.pricePerNight || 0) * selectedTotalNights;
-    document.getElementById("baseLabel").innerText =
-        selectedTotalNights > 0
-            ? `Base Stay (₹${(activeVilla.pricePerNight || 0).toLocaleString('en-IN')} × ${selectedTotalNights} Night${selectedTotalNights > 1 ? 's' : ''})`
-            : 'Base Accommodation Fee';
+    let baseCost = 0;
+    let baseLabelText = 'Base Accommodation Fee';
+
+    if (selectedTotalNights > 0) {
+        if (activeVilla.stayflexi) {
+            // Stayflexi-linked property: refreshLiveRate() already pulled a
+            // blended nightly rate straight from SF's own calendar, which
+            // accounts for SF's own weekend pricing. Apply it flat.
+            baseCost = (activeVilla.pricePerNight || 0) * selectedTotalNights;
+            baseLabelText = `Base Stay (₹${(activeVilla.pricePerNight || 0).toLocaleString('en-IN')} × ${selectedTotalNights} Night${selectedTotalNights > 1 ? 's' : ''})`;
+        } else if (calendarInstance && calendarInstance.selectedDates.length === 2) {
+            // Self-managed property: split the stay into weekday/weekend
+            // nights using the admin panel's pricePerNight / weekendRate.
+            const [inDate, outDate] = calendarInstance.selectedDates;
+            const breakdown = computeNightlyBreakdown(inDate, outDate);
+            baseCost = breakdown.total;
+            const parts = [];
+            if (breakdown.weekdayNights) {
+                parts.push(`${breakdown.weekdayNights} night${breakdown.weekdayNights > 1 ? 's' : ''} @ ₹${(activeVilla.pricePerNight || 0).toLocaleString('en-IN')}`);
+            }
+            if (breakdown.weekendNights) {
+                parts.push(`${breakdown.weekendNights} weekend night${breakdown.weekendNights > 1 ? 's' : ''} @ ₹${(activeVilla.weekendRate || activeVilla.pricePerNight || 0).toLocaleString('en-IN')}`);
+            }
+            baseLabelText = `Base Stay (${parts.join(' + ')})`;
+        } else {
+            baseCost = (activeVilla.pricePerNight || 0) * selectedTotalNights;
+            baseLabelText = `Base Stay (₹${(activeVilla.pricePerNight || 0).toLocaleString('en-IN')} × ${selectedTotalNights} Night${selectedTotalNights > 1 ? 's' : ''})`;
+        }
+    }
+
+    document.getElementById("baseLabel").innerText = baseLabelText;
     document.getElementById("baseCost").innerText = `₹${baseCost.toLocaleString('en-IN')}`;
 
     let addons = 0;
@@ -345,7 +409,16 @@ async function executePaymentGateway() {
     if (!email || !email.includes('@')) { alert("Please enter a valid email address."); document.getElementById("guestEmail").focus(); return; }
     if (!phone || phone.replace(/\D/g, '').length < 10) { alert("Please enter a valid 10-digit WhatsApp number."); document.getElementById("guestPhone").focus(); return; }
 
-    const baseCost  = (activeVilla.pricePerNight || 0) * selectedTotalNights;
+    const dates    = calendarInstance.selectedDates;
+
+    // ── Same rule as calculateTotal(): Stayflexi-linked properties charge
+    // the live blended rate flat; self-managed properties split by night
+    // using pricePerNight / weekendRate so the guest is charged exactly
+    // what's shown on screen.
+    const baseCost = activeVilla.stayflexi
+        ? (activeVilla.pricePerNight || 0) * selectedTotalNights
+        : computeNightlyBreakdown(dates[0], dates[1]).total;
+
     let addonsTotal = 0;
     const addons    = [];
     if (document.getElementById("addonChef").checked)    { addons.push("Chef");    addonsTotal += CHEF_RATE_PER_DAY * selectedTotalNights; }
@@ -353,7 +426,6 @@ async function executePaymentGateway() {
     const gst    = Math.round((baseCost + addonsTotal) * 0.18);
     const amount = baseCost + addonsTotal + gst;
 
-    const dates    = calendarInstance.selectedDates;
     const checkIn  = dates[0] ? dates[0].toISOString().slice(0, 10) : '';
     const checkOut = dates[1] ? dates[1].toISOString().slice(0, 10) : '';
 
