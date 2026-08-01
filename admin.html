@@ -1566,6 +1566,31 @@ async function importSfHotel(hotel) {
             }
             return 0;
         };
+        // ── When no rate comes back, figure out WHY so the warning banner is
+        // actionable instead of generic. Distinguishes: no rooms sellable
+        // (sold out) vs no room types even returned (likely a restriction —
+        // stopSell / closedOnArrival — for that specific check-in date) vs
+        // an outright API/network failure (handled separately in the catch).
+        var diagnoseNoRate = function(avail) {
+            if (!avail) return 'Stayflexi returned no data for this date.';
+            if (!avail.roomTypeMap || !Object.keys(avail.roomTypeMap).length) {
+                return 'No room types returned by Stayflexi for this date — likely a stop-sell or closed-on-arrival restriction set on this property for that day.';
+            }
+            var sawCombo = false;
+            for (var rtId in avail.roomTypeMap) {
+                var room = avail.roomTypeMap[rtId];
+                if (room && room.combos && room.combos.length) {
+                    sawCombo = true;
+                    if (room.combos[0].availableRooms === 0) {
+                        return 'Room type "' + (room.roomTypeName || rtId) + '" is sold out for this date.';
+                    }
+                }
+            }
+            if (!sawCombo) {
+                return 'No availability combos returned — likely a stop-sell or closed-on-arrival restriction for that day. Check the room\u2019s restrictions in the Stayflexi dashboard/calendar.';
+            }
+            return 'No sellable rate returned by Stayflexi for this date.';
+        };
         // Find the next weekday night (Tue checkin) and the next Saturday night,
         // so the weekday/weekend rates we pull are actually representative.
         var nextDow = function(fromDate, targetDow) {
@@ -1589,11 +1614,17 @@ async function importSfHotel(hotel) {
             if (weekdayRate) {
                 document.getElementById('f_pricePerNight').value = Math.round(weekdayRate);
             } else if (priceWarning) {
+                var weekdayReason = diagnoseNoRate(weekdayAvail);
+                console.warn('Weekday rate not returned:', weekdayReason, weekdayAvail);
+                priceWarning.textContent = '⚠ Weekday rate: ' + weekdayReason + ' Enter manually.';
                 priceWarning.classList.remove('hidden');
             }
         } catch (e) {
             console.warn('Could not fetch live weekday rate, leave price for manual entry:', e.message);
-            if (priceWarning) priceWarning.classList.remove('hidden');
+            if (priceWarning) {
+                priceWarning.textContent = '⚠ Weekday rate: Stayflexi API call failed (' + e.message + '). Enter manually.';
+                priceWarning.classList.remove('hidden');
+            }
         }
 
         try {
@@ -1605,11 +1636,19 @@ async function importSfHotel(hotel) {
             if (weekendRate) {
                 document.getElementById('f_weekendRate').value = Math.round(weekendRate);
             } else if (priceWarning) {
+                var weekendReason = diagnoseNoRate(weekendAvail);
+                console.warn('Weekend rate not returned:', weekendReason, weekendAvail);
+                var existing = priceWarning.textContent && !priceWarning.classList.contains('hidden') ? priceWarning.textContent + ' ' : '⚠ ';
+                priceWarning.textContent = existing + 'Weekend rate: ' + weekendReason + ' Enter manually.';
                 priceWarning.classList.remove('hidden');
             }
         } catch (e) {
             console.warn('Could not fetch live weekend rate, leave weekend price for manual entry:', e.message);
-            if (priceWarning) priceWarning.classList.remove('hidden');
+            if (priceWarning) {
+                var existingErr = priceWarning.textContent && !priceWarning.classList.contains('hidden') ? priceWarning.textContent + ' ' : '⚠ ';
+                priceWarning.textContent = existingErr + 'Weekend rate: Stayflexi API call failed (' + e.message + '). Enter manually.';
+                priceWarning.classList.remove('hidden');
+            }
         }
     } catch(e) {
         // Basic import without full content
