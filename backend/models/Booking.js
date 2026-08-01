@@ -41,6 +41,11 @@ const bookingSchema = new mongoose.Schema({
     // still enforcing uniqueness among non-null values
     bookingRef: { type: String, unique: true, sparse: true },
 
+    // Payment (Razorpay)
+    paid:               { type: Boolean, default: false },
+    razorpayOrderId:    { type: String },
+    razorpayPaymentId:  { type: String },
+
 }, { timestamps: true });
 
 bookingSchema.pre("save", async function () {
