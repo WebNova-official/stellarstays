@@ -338,6 +338,45 @@ function kpi(label, val) {
 </head>
 <body>
 
+<!-- ADMIN LOGIN GATE -->
+<div id="admin-login-gate" style="position:fixed;inset:0;z-index:9999;background:#0f172a;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">
+    <form id="admin-login-form" style="background:#1e293b;padding:2.5rem;border-radius:12px;width:320px;box-shadow:0 10px 40px rgba(0,0,0,0.4);">
+        <div style="color:#fff;font-weight:900;font-size:1.1rem;margin-bottom:1.5rem;text-align:center;">
+            STELLAR<span style="color:#fbbf24;">STAYS</span>
+            <div style="color:#94a3b8;font-size:0.75rem;font-weight:500;margin-top:2px;">Admin Panel Login</div>
+        </div>
+        <input id="admin-login-pass" type="password" placeholder="Password" autocomplete="off"
+            style="width:100%;padding:0.65rem 0.8rem;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;margin-bottom:0.75rem;outline:none;box-sizing:border-box;">
+        <div id="admin-login-error" style="color:#f87171;font-size:0.8rem;margin-bottom:0.75rem;display:none;">Incorrect password.</div>
+        <button type="submit" style="width:100%;padding:0.65rem;border-radius:8px;border:none;background:#fbbf24;color:#0f172a;font-weight:700;cursor:pointer;">Login</button>
+    </form>
+</div>
+<script>
+(function () {
+    var ADMIN_PASSWORD = "stellar@100";
+    var gate = document.getElementById('admin-login-gate');
+    var form = document.getElementById('admin-login-form');
+    var input = document.getElementById('admin-login-pass');
+    var errEl = document.getElementById('admin-login-error');
+
+    if (sessionStorage.getItem('stellarstays_admin_ok') === '1') {
+        gate.style.display = 'none';
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (input.value === ADMIN_PASSWORD) {
+            sessionStorage.setItem('stellarstays_admin_ok', '1');
+            gate.style.display = 'none';
+        } else {
+            errEl.style.display = 'block';
+            input.value = '';
+            input.focus();
+        }
+    });
+})();
+</script>
+
 <div class="flex min-h-screen">
 
     <!-- SIDEBAR -->
@@ -489,6 +528,10 @@ function kpi(label, val) {
                 <div>
                     <h1 class="text-2xl font-black text-[#0f1f3d]">Bookings</h1>
                     <p class="text-sm text-gray-500 mt-0.5">All guest reservations from StellarStays custom form.</p>
+                </div>
+                <div class="flex gap-1.5 bg-gray-100 p-1 rounded-xl">
+                    <button id="bkg_filter_website" onclick="setBookingsFilter('website')" class="text-xs font-bold px-3.5 py-1.5 rounded-lg transition bg-white text-[#0f1f3d] shadow-sm">Website Bookings</button>
+                    <button id="bkg_filter_all" onclick="setBookingsFilter('all')" class="text-xs font-bold px-3.5 py-1.5 rounded-lg transition text-gray-500">All Bookings</button>
                 </div>
             </div>
             <div id="bookingsTable" class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -1332,49 +1375,79 @@ async function loadRevenueCard() {
 }
 
 // ── Load Bookings ──
+var bookingsFilter = 'website'; // 'website' | 'all'
+
+function setBookingsFilter(mode) {
+    bookingsFilter = mode;
+    document.getElementById('bkg_filter_website').className = 'text-xs font-bold px-3.5 py-1.5 rounded-lg transition ' + (mode==='website' ? 'bg-white text-[#0f1f3d] shadow-sm' : 'text-gray-500');
+    document.getElementById('bkg_filter_all').className = 'text-xs font-bold px-3.5 py-1.5 rounded-lg transition ' + (mode==='all' ? 'bg-white text-[#0f1f3d] shadow-sm' : 'text-gray-500');
+    renderBookingsTable();
+}
+
 async function loadBookings() {
     document.getElementById('bookingsTable').innerHTML = '<div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading…</div>';
     try {
         var res = await fetch(API + '/bookings');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         allBookings = await res.json();
-        if (!allBookings.length) {
-            document.getElementById('bookingsTable').innerHTML = '<div class="p-12 text-center text-gray-400 text-sm">No bookings yet.</div>';
-            return;
-        }
-        var rows = allBookings.map(function(b) {
-            var sc = {pending:'text-amber-700 bg-amber-50',Pending:'text-amber-700 bg-amber-50',confirmed:'text-emerald-700 bg-emerald-50',Confirmed:'text-emerald-700 bg-emerald-50',cancelled:'text-red-600 bg-red-50',Cancelled:'text-red-600 bg-red-50'}[b.status] || 'text-gray-600 bg-gray-50';
-            var payBadge = b.paymentStatus === 'paid'
-                ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50 ml-1"><i class="fa-solid fa-circle-check"></i> Paid</span>'
-                : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-700 bg-amber-50 ml-1">Unpaid</span>';
-            return '<tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">'
-                + '<td class="px-4 py-3.5"><div class="text-xs font-black text-[#0f1f3d]">' + (b.bookingRef||b._id.slice(-6)) + '</div><div class="text-[10px] text-gray-400 mt-0.5">' + new Date(b.createdAt).toLocaleDateString('en-IN') + '</div></td>'
-                + '<td class="px-4 py-3.5"><div class="text-sm font-bold text-gray-800">' + (b.guestName||'—') + '</div><div class="text-xs text-gray-400">' + (b.guestEmail||'') + '</div></td>'
-                + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.propertyName||'—') + '</td>'
-                + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.checkIn||'—') + ' → ' + (b.checkOut||'—') + '<div class="text-[10px] text-gray-400 mt-0.5">' + (b.nights||0) + ' night' + (b.nights!==1?'s':'') + '</div></td>'
-                + '<td class="px-4 py-3.5 text-sm font-black text-[#0f1f3d]">₹' + (b.totalAmount||b.amount||0).toLocaleString('en-IN') + '</td>'
-                + '<td class="px-4 py-3.5"><span class="text-xs font-bold px-2.5 py-1 rounded-full ' + sc + '">' + (b.status||'pending') + '</span>' + payBadge + '</td>'
-                + '<td class="px-4 py-3.5"><div class="flex gap-1.5 flex-wrap">'
-                + '<button onclick="updateBookingStatus(\'' + b._id + '\',\'confirmed\')" class="btn-ghost py-1 px-2 text-[10px] text-emerald-700 border-emerald-200">✓ Confirm</button>'
-                + '<button onclick="updateBookingStatus(\'' + b._id + '\',\'cancelled\')" class="btn-ghost py-1 px-2 text-[10px] text-red-600 border-red-200">✗ Cancel</button>'
-                + (b.paymentStatus !== 'paid' ? '<button onclick="generatePaymentLink(\'' + b._id + '\')" class="btn-ghost py-1 px-2 text-[10px] text-indigo-700 border-indigo-200"><i class="fa-solid fa-link"></i> Payment Link</button>' : '')
-                + '</div></td>'
-                + '</tr>';
-        }).join('');
-
-        document.getElementById('bookingsTable').innerHTML =
-            '<table class="w-full text-left"><thead><tr class="border-b border-gray-100">'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Ref</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Guest</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Property</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Dates</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Amount</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Status</th>'
-            + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Actions</th>'
-            + '</tr></thead><tbody>' + rows + '</tbody></table>';
+        renderBookingsTable();
     } catch (err) {
         document.getElementById('bookingsTable').innerHTML = '<div class="p-8 text-center text-red-400 text-sm font-semibold">Failed to load: ' + err.message + '</div>';
     }
+}
+
+function renderBookingsTable() {
+    // "Website Bookings" = booking.source is "website" or missing (all bookings
+    // taken through the public booking form default to this). "All Bookings"
+    // = every record regardless of source (manual/phone/other channels too).
+    var list = bookingsFilter === 'website'
+        ? allBookings.filter(function(b) { return !b.source || b.source === 'website'; })
+        : allBookings;
+
+    if (!list.length) {
+        document.getElementById('bookingsTable').innerHTML = '<div class="p-12 text-center text-gray-400 text-sm">No bookings yet.</div>';
+        return;
+    }
+
+    var rows = list.map(function(b) {
+        var sc = {pending:'text-amber-700 bg-amber-50',Pending:'text-amber-700 bg-amber-50',confirmed:'text-emerald-700 bg-emerald-50',Confirmed:'text-emerald-700 bg-emerald-50',cancelled:'text-red-600 bg-red-50',Cancelled:'text-red-600 bg-red-50'}[b.status] || 'text-gray-600 bg-gray-50';
+        var payBadge = b.paymentStatus === 'paid' || b.paid || b.razorpayPaymentId
+            ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50 ml-1"><i class="fa-solid fa-circle-check"></i> Paid</span>'
+            : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-700 bg-amber-50 ml-1">Unpaid</span>';
+        var totalGuests = (b.adults||0) + (b.children||0) + (b.infants||0);
+        var sourceBadge = '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-indigo-700 bg-indigo-50">' + (b.source || 'website') + '</span>';
+
+        return '<tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">'
+            + '<td class="px-4 py-3.5"><div class="text-xs font-black text-[#0f1f3d]">' + (b.bookingRef||b._id.slice(-6)) + '</div><div class="text-[10px] text-gray-400 mt-0.5">' + new Date(b.createdAt).toLocaleDateString('en-IN') + '</div><div class="mt-1">' + sourceBadge + '</div></td>'
+            + '<td class="px-4 py-3.5"><div class="text-sm font-bold text-gray-800">' + (b.guestName||'—') + '</div>'
+                + '<div class="text-xs text-gray-500 mt-0.5"><i class="fa-solid fa-envelope w-3 text-gray-300"></i> ' + (b.guestEmail||'—') + '</div>'
+                + '<div class="text-xs text-gray-500 mt-0.5"><i class="fa-solid fa-phone w-3 text-gray-300"></i> ' + (b.guestPhone||'—') + '</div></td>'
+            + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.propertyName||'—') + '</td>'
+            + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.checkIn||'—') + ' → ' + (b.checkOut||'—') + '<div class="text-[10px] text-gray-400 mt-0.5">' + (b.nights||0) + ' night' + (b.nights!==1?'s':'') + '</div></td>'
+            + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold text-center">' + (totalGuests || '—') + '</td>'
+            + '<td class="px-4 py-3.5 text-sm font-black text-[#0f1f3d]">₹' + (b.totalAmount||b.amount||0).toLocaleString('en-IN') + '</td>'
+            + '<td class="px-4 py-3.5"><div class="text-[11px] font-mono text-gray-600">' + (b.razorpayPaymentId || '—') + '</div></td>'
+            + '<td class="px-4 py-3.5"><span class="text-xs font-bold px-2.5 py-1 rounded-full ' + sc + '">' + (b.status||'pending') + '</span>' + payBadge + '</td>'
+            + '<td class="px-4 py-3.5"><div class="flex gap-1.5 flex-wrap">'
+            + '<button onclick="updateBookingStatus(\'' + b._id + '\',\'confirmed\')" class="btn-ghost py-1 px-2 text-[10px] text-emerald-700 border-emerald-200">✓ Confirm</button>'
+            + '<button onclick="updateBookingStatus(\'' + b._id + '\',\'cancelled\')" class="btn-ghost py-1 px-2 text-[10px] text-red-600 border-red-200">✗ Cancel</button>'
+            + (b.paymentStatus !== 'paid' ? '<button onclick="generatePaymentLink(\'' + b._id + '\')" class="btn-ghost py-1 px-2 text-[10px] text-indigo-700 border-indigo-200"><i class="fa-solid fa-link"></i> Payment Link</button>' : '')
+            + '</div></td>'
+            + '</tr>';
+    }).join('');
+
+    document.getElementById('bookingsTable').innerHTML =
+        '<div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b border-gray-100">'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Ref / Source</th>'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Guest (Name / Email / Mobile)</th>'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Property</th>'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Dates</th>'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Guests</th>'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Amount</th>'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Razorpay Payment ID</th>'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Status</th>'
+        + '<th class="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Actions</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 
 async function updateBookingStatus(id, status) {
