@@ -41,6 +41,13 @@ const bookingSchema = new mongoose.Schema({
     // still enforcing uniqueness among non-null values
     bookingRef: { type: String, unique: true, sparse: true },
 
+    // Where this booking came from. Bookings created through the public
+    // booking form are "website". Anything created another way (manual
+    // admin entry, phone booking, imported from a channel, etc.) should
+    // set this explicitly. Defaults to "website" since that's the only
+    // path that currently writes to this collection.
+    source: { type: String, default: "website" },
+
     // Payment (Razorpay)
     paid:               { type: Boolean, default: false },
     razorpayOrderId:    { type: String },
