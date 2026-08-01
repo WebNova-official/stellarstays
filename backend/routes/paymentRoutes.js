@@ -7,6 +7,7 @@ const router  = require("express").Router();
 const Booking = require("../models/Booking");
 const { createOrder, verifySignature } = require("../services/paymentService");
 const { sendBookingConfirmation }      = require("../services/mailService");
+const sf                               = require("../services/stayflexiService");
 
 // POST /api/payments/create-order  { bookingId }
 router.post("/create-order", async (req, res) => {
@@ -30,8 +31,11 @@ router.post("/create-order", async (req, res) => {
             keyId:    (process.env.RAZORPAY_KEY_ID || "").trim(),
         });
     } catch (err) {
-        console.error("Create Razorpay order error:", err);
-        res.status(500).json({ success: false, message: err.message });
+        // Razorpay SDK errors often don't have a plain .message — the real
+        // reason (e.g. "Authentication failed") lives in err.error.description.
+        const detail = err?.error?.description || err.message || "Unknown error";
+        console.error("Create Razorpay order error:", err?.error || err);
+        res.status(500).json({ success: false, message: detail });
     }
 });
 
@@ -54,6 +58,34 @@ router.post("/verify", async (req, res) => {
             { new: true }
         );
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        // Confirm the Stayflexi enquiry so the dates show as booked on their
+        // calendar. Don't block the guest's confirmation on this — if it
+        // fails, log it loudly so it can be reconciled manually; the guest
+        // has already paid and their booking is confirmed on our side.
+        if (booking.stayflexiBookingId && booking.stayflexiHotelId) {
+            sf.recordExternalPayment({
+                hotel_id: parseInt(booking.stayflexiHotelId),
+                booking_id: booking.stayflexiBookingId,
+                booking_source: "CUSTOM_BE",
+                module_source: "CUSTOM_BE_PAYMENT",
+                amount: booking.totalAmount,
+                currency: "INR",
+                payment_gateway_id: razorpay_payment_id,
+                pg_name: "RAZORPAY",
+                requires_post_payment_confirmation: true,
+                notes: "",
+                gateway_message: "",
+                payment_type: "Card",
+                payment_issuer: "",
+                payment_mode: "ONLINE",
+                status: "SUCCESS",
+            }).catch(e =>
+                console.error(`[SF recordExternalPayment] FAILED for stayflexiBookingId=${booking.stayflexiBookingId}:`, e.message)
+            );
+        } else {
+            console.warn(`Booking ${booking._id} has no stayflexiBookingId — dates will NOT block on Stayflexi's calendar.`);
+        }
 
         // Fire-and-forget: don't block the guest's confirmation on email delivery.
         sendBookingConfirmation(booking).catch(e =>
