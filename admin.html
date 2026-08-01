@@ -1508,6 +1508,17 @@ async function importSfHotel(hotel) {
         // Fetch tomorrow → day-after as a representative rate.
         var priceWarning = document.getElementById('sfPriceImportWarning');
         if (priceWarning) priceWarning.classList.add('hidden');
+
+        // If Stayflexi has no room types at all for this hotelId, the rate
+        // calls below are guaranteed to also come back empty — surface that
+        // clearly up front instead of two generic "no rate" warnings.
+        if (!content.roomTypeList || !content.roomTypeList.length) {
+            if (priceWarning) {
+                priceWarning.textContent = '⚠ This hotel (hotelId ' + hotel.hotelId + ') has NO room types configured in Stayflexi yet — hotelcontent.roomTypeList is empty. Rates can\u2019t be fetched until room types + rate plans are set up for this property in the Stayflexi dashboard. Enter details manually for now.';
+                priceWarning.classList.remove('hidden');
+            }
+            return; // skip the weekday/weekend rate calls — they can't succeed
+        }
         var pad = function(n) { return String(n).padStart(2, '0'); };
         var fmt = function(d, time) { return pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear() + ' ' + time; };
         var extractRate = function(avail) {
