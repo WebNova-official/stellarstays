@@ -484,6 +484,9 @@ function kpi(label, val) {
                     <p class="text-sm text-gray-500 mt-0.5">Manage listings. Set the <strong>Stayflexi Hotel ID</strong> to enable live booking.</p>
                 </div>
                 <div class="flex gap-2">
+                    <button class="btn-ghost flex items-center gap-2 text-indigo-700 border-indigo-200" onclick="checkAllRates()">
+                        <i class="fa-solid fa-satellite-dish text-xs"></i> Check All Rates
+                    </button>
                     <button class="btn-ghost flex items-center gap-2 text-emerald-700 border-emerald-200" onclick="openSfImportModal()">
                         <i class="fa-solid fa-bolt text-xs"></i> Import from SF
                     </button>
@@ -492,6 +495,8 @@ function kpi(label, val) {
                     </button>
                 </div>
             </div>
+
+            <div id="checkAllRatesPanel" class="hidden mb-6"></div>
 
             <!-- Summary cards -->
             <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
@@ -1380,6 +1385,113 @@ async function deleteProperty(id, name) {
 
 // ── Load Properties ──
 var allProperties = [];
+
+// ── Check All Rates ──
+// Loops every Stayflexi-linked property, pulls next-Tuesday (weekday) and
+// next-Saturday (weekend) rates via hoteldetailadvanced, same extraction/
+// diagnosis logic as the single-property import flow, and shows a summary
+// table so you don't have to click into each property one by one.
+async function checkAllRates() {
+    var panel = document.getElementById('checkAllRatesPanel');
+    var linked = allProperties.filter(function(p) { return p.stayflexi && p.stayflexi.trim(); });
+
+    if (!linked.length) {
+        panel.classList.remove('hidden');
+        panel.innerHTML = '<div class="bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold rounded-xl p-4">No Stayflexi-linked properties to check.</div>';
+        return;
+    }
+
+    panel.classList.remove('hidden');
+    panel.innerHTML = '<div class="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 text-xs text-gray-400 animate-pulse">⏳ Checking ' + linked.length + ' propert' + (linked.length === 1 ? 'y' : 'ies') + '…</div>';
+
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    var fmt = function(d, time) { return pad(d.getDate()) + '-' + pad(d.getMonth()+1) + '-' + d.getFullYear() + ' ' + time; };
+    var nextDow = function(fromDate, targetDow) {
+        var d = new Date(fromDate);
+        var diff = (targetDow - d.getDay() + 7) % 7;
+        d.setDate(d.getDate() + (diff === 0 ? 7 : diff));
+        return d;
+    };
+    var extractRate = function(avail) {
+        if (!avail) return 0;
+        if (avail.rate) return avail.rate;
+        if (avail.actualRate) return avail.actualRate;
+        if (!avail.roomTypeMap) return 0;
+        for (var rtId in avail.roomTypeMap) {
+            var room = avail.roomTypeMap[rtId];
+            var combo = room && room.combos && room.combos[0];
+            var price = combo && combo.rates && combo.rates[0] && combo.rates[0].price;
+            if (price) return price;
+        }
+        return 0;
+    };
+    var diagnoseNoRate = function(avail) {
+        if (!avail) return 'No data returned.';
+        if (!avail.roomTypeMap || !Object.keys(avail.roomTypeMap).length) {
+            return 'No room types returned — stop-sell / CTA / min-LOS likely.';
+        }
+        var sawCombo = false;
+        for (var rtId in avail.roomTypeMap) {
+            var room = avail.roomTypeMap[rtId];
+            if (room && room.combos && room.combos.length) {
+                sawCombo = true;
+                if (room.combos[0].availableRooms === 0) return 'Sold out for this date.';
+            }
+        }
+        return sawCombo ? 'No sellable rate returned.' : 'No availability combos — restriction likely.';
+    };
+
+    var today = new Date();
+    var weekdayIn = nextDow(today, 2), weekdayOut = new Date(weekdayIn); weekdayOut.setDate(weekdayOut.getDate() + 1);
+    var weekendIn = nextDow(today, 6), weekendOut = new Date(weekendIn); weekendOut.setDate(weekendOut.getDate() + 1);
+
+    var results = [];
+    for (var i = 0; i < linked.length; i++) {
+        var p = linked[i];
+        var row = { name: p.name || p._id, hotelId: p.stayflexi.trim(), weekday: null, weekend: null, weekdayMsg: '', weekendMsg: '' };
+        try {
+            var wd = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + row.hotelId
+                + '&checkin=' + encodeURIComponent(fmt(weekdayIn, '14:00:00'))
+                + '&checkout=' + encodeURIComponent(fmt(weekdayOut, '12:00:00')) + '&discount=0');
+            var wdRate = extractRate(wd);
+            if (wdRate) { row.weekday = wdRate; } else { row.weekdayMsg = diagnoseNoRate(wd); }
+        } catch (e) { row.weekdayMsg = 'API error: ' + e.message; }
+
+        try {
+            var we = await sfFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + row.hotelId
+                + '&checkin=' + encodeURIComponent(fmt(weekendIn, '14:00:00'))
+                + '&checkout=' + encodeURIComponent(fmt(weekendOut, '12:00:00')) + '&discount=0');
+            var weRate = extractRate(we);
+            if (weRate) { row.weekend = weRate; } else { row.weekendMsg = diagnoseNoRate(we); }
+        } catch (e) { row.weekendMsg = 'API error: ' + e.message; }
+
+        results.push(row);
+    }
+
+    var okCount = results.filter(function(r) { return r.weekday && r.weekend; }).length;
+
+    var rowsHtml = results.map(function(r) {
+        var bothOk = r.weekday && r.weekend;
+        return '<tr class="border-b border-gray-50 ' + (bothOk ? '' : 'bg-amber-50/50') + '">'
+            + '<td class="px-4 py-3 text-sm font-bold text-[#0f1f3d]">' + r.name + '</td>'
+            + '<td class="px-4 py-3 text-xs text-gray-400">' + r.hotelId + '</td>'
+            + '<td class="px-4 py-3 text-xs">' + (r.weekday ? '<span class="text-emerald-600 font-bold">₹' + Math.round(r.weekday).toLocaleString('en-IN') + '</span>' : '<span class="text-red-500 font-semibold">✗ ' + r.weekdayMsg + '</span>') + '</td>'
+            + '<td class="px-4 py-3 text-xs">' + (r.weekend ? '<span class="text-emerald-600 font-bold">₹' + Math.round(r.weekend).toLocaleString('en-IN') + '</span>' : '<span class="text-red-500 font-semibold">✗ ' + r.weekendMsg + '</span>') + '</td>'
+            + '</tr>';
+    }).join('');
+
+    panel.innerHTML = '<div class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">'
+        + '<div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">'
+            + '<span class="text-sm font-black text-[#0f1f3d]">Rate Check — ' + okCount + '/' + results.length + ' OK</span>'
+            + '<span class="text-[10px] text-gray-400">Weekday: next Tue · Weekend: next Sat</span>'
+        + '</div>'
+        + '<table class="w-full text-left"><thead><tr class="border-b border-gray-100 bg-gray-50/50">'
+            + '<th class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase">Property</th>'
+            + '<th class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase">Hotel ID</th>'
+            + '<th class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase">Weekday Rate</th>'
+            + '<th class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase">Weekend Rate</th>'
+        + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+}
 
 async function loadProperties() {
     document.getElementById('propertiesTable').innerHTML = '<div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading…</div>';
