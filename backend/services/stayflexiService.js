@@ -46,7 +46,7 @@ module.exports = {
         sfRequest("/core/api/v1/beservice/grouphotels", { query: { groupId: groupId() } }),
 
     getGroupLocations: () =>
-        sfRequest("/core/api/v1/beservice/grouplocations", { query: { groupId: groupId() } }),
+        sfRequest("/core/api/v1/beservice/groupLocations", { query: { groupId: groupId() } }),
 
     getGroupHotelsByLocation: (location) =>
         sfRequest("/core/api/v1/beservice/grouphotelsbylocation", {
