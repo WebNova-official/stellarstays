@@ -32,6 +32,23 @@ async function loadDashboard() {
     loadVillaMonthlyReport();
 }
 
+// ── Manual refresh — spins the icon while KPIs + villa report reload ──
+async function refreshDashboard(btn) {
+    var icon = btn ? btn.querySelector('i') : null;
+    if (icon) icon.classList.add('fa-spin');
+    if (btn) btn.disabled = true;
+    try {
+        await Promise.all([
+            loadDashboardActiveVillas(),
+            loadDashboardCustomBookings(),
+            loadVillaMonthlyReport(),
+        ]);
+    } finally {
+        if (icon) icon.classList.remove('fa-spin');
+        if (btn) btn.disabled = false;
+    }
+}
+
 // ── Active Villas KPI (from StellarStays' own property list, not Stayflexi) ──
 async function loadDashboardActiveVillas() {
     var el = document.getElementById('dash_active_villas');
@@ -425,9 +442,14 @@ function kpi(label, val) {
 
         <!-- ═══ DASHBOARD TAB ═══ -->
         <div id="tab-dashboard" class="hidden">
-            <div class="mb-6">
-                <h1 class="text-2xl font-black text-[#0f1f3d]">Dashboard</h1>
-                <p class="text-sm text-gray-500 mt-0.5">Live overview — today's revenue, bookings & per-villa reports.</p>
+            <div class="mb-6 flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-black text-[#0f1f3d]">Dashboard</h1>
+                    <p class="text-sm text-gray-500 mt-0.5">Live overview — today's revenue, bookings & per-villa reports.</p>
+                </div>
+                <button onclick="refreshDashboard(this)" class="btn-ghost flex items-center gap-2 text-indigo-700 border-indigo-200 shrink-0">
+                    <i class="fa-solid fa-rotate text-xs"></i> Refresh
+                </button>
             </div>
 
             <!-- KPI Row -->
