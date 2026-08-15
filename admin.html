@@ -10,6 +10,16 @@
 // DASHBOARD
 // ═══════════════════════════════════════
 
+// ── Phone helper: click-to-call + WhatsApp icons next to a number ──
+function phoneLinks(phone) {
+    if (!phone) return '<span class="text-gray-300">—</span>';
+    var digits = String(phone).replace(/[^\d]/g, '');
+    // Assume Indian mobile if 10 digits with no country code
+    var wa = digits.length === 10 ? '91' + digits : digits;
+    return '<a href="tel:' + phone + '" class="text-gray-500 hover:text-indigo-600" title="Call">' + phone + '</a>'
+        + ' <a href="https://wa.me/' + wa + '" target="_blank" rel="noopener" class="text-emerald-600 hover:text-emerald-700 ml-1" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>';
+}
+
 async function loadDashboard() {
     loadDashboardActiveVillas();
     loadDashboardCustomBookings();
@@ -85,7 +95,7 @@ async function loadDashboardCustomBookings() {
             html += '<tr class="border-b border-gray-50 hover:bg-gray-50">'
                 + '<td class="py-3 px-3"><div class="font-semibold text-[#0f1f3d]">' + (b.guestName || '—') + '</div>'
                 + '<div class="text-xs text-gray-400">' + (b.guestEmail || '') + '</div>'
-                + '<div class="text-xs text-gray-400">' + (b.guestPhone || '') + '</div></td>'
+                + '<div class="text-xs text-gray-400">' + phoneLinks(b.guestPhone) + '</div></td>'
                 + '<td class="py-3 px-3 text-gray-600">' + (b.propertyName || '—') + '</td>'
                 + '<td class="py-3 px-3 text-gray-500 text-xs">' + (b.checkIn || '—') + '</td>'
                 + '<td class="py-3 px-3 text-gray-500 text-xs">' + (b.checkOut || '—') + '</td>'
@@ -116,7 +126,7 @@ function openDashBookingDetails(i) {
     var rows = [
         ['Booking Ref', b.bookingRef || '—'],
         ['Guest Name', b.guestName || '—'],
-        ['Phone', b.guestPhone || '—'],
+        ['Phone', phoneLinks(b.guestPhone)],
         ['Email', b.guestEmail || '—'],
         ['Property', b.propertyName || '—'],
         ['Check-In', b.checkIn || '—'],
@@ -1564,7 +1574,7 @@ function renderBookings() {
             : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-700 bg-amber-50 ml-1">Unpaid</span>';
         return '<tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">'
             + '<td class="px-4 py-3.5"><div class="text-xs font-black text-[#0f1f3d]">' + (b.bookingRef||b._id.slice(-6)) + '</div><div class="text-[10px] text-gray-400 mt-0.5">' + new Date(b.createdAt).toLocaleDateString('en-IN') + '</div></td>'
-            + '<td class="px-4 py-3.5"><div class="text-sm font-bold text-gray-800">' + (b.guestName||'—') + '</div><div class="text-xs text-gray-400">' + (b.guestEmail||'') + '</div><div class="text-xs text-gray-400">' + (b.guestPhone||'—') + '</div></td>'
+            + '<td class="px-4 py-3.5"><div class="text-sm font-bold text-gray-800">' + (b.guestName||'—') + '</div><div class="text-xs text-gray-400">' + (b.guestEmail||'') + '</div><div class="text-xs text-gray-400">' + phoneLinks(b.guestPhone) + '</div></td>'
             + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.propertyName||'—') + '</td>'
             + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.checkIn||'—') + ' → ' + (b.checkOut||'—') + '<div class="text-[10px] text-gray-400 mt-0.5">' + (b.nights||0) + ' night' + (b.nights!==1?'s':'') + '</div></td>'
             + '<td class="px-4 py-3.5 text-sm font-black text-[#0f1f3d]">₹' + (b.totalAmount||b.amount||0).toLocaleString('en-IN') + '</td>'
