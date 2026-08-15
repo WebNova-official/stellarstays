@@ -178,7 +178,11 @@
 
             <!-- PHOTOS PANEL -->
             <div id="mediaPhotos" class="slider-wrap h-full">
-                <img id="sliderMainImg" src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1200&q=80" alt="Villa photo" />
+                <img id="sliderMainImg" src="" alt="Villa photo" style="display:none;" />
+                <div id="noPhotoMsg" class="hidden flex-col items-center justify-center gap-3 text-gray-400 w-full h-full bg-gray-50">
+                    <i class="fa-solid fa-image-slash text-4xl text-gray-300"></i>
+                    <p class="text-sm font-semibold text-gray-400">No photos available for this property</p>
+                </div>
                 <button class="slider-arrow" id="sliderPrev" onclick="sliderStep(-1)" title="Previous">&#8249;</button>
                 <button class="slider-arrow" id="sliderNext" onclick="sliderStep(1)" title="Next">&#8250;</button>
                 <div class="slider-counter" id="sliderCounter">1 / 1</div>
@@ -847,9 +851,25 @@ async function loadBookingPage() {
         window._galleryImages = images;
         _sliderImgs = images;
         _sliderIdx = 0;
+        var sliderImgEl = document.getElementById('sliderMainImg');
+        var noPhotoMsgEl = document.getElementById('noPhotoMsg');
+        var sliderPrevEl = document.getElementById('sliderPrev');
+        var sliderNextEl = document.getElementById('sliderNext');
         if (images.length > 0) {
-            document.getElementById('sliderMainImg').src = images[0];
+            sliderImgEl.src = images[0];
+            sliderImgEl.style.display = '';
+            noPhotoMsgEl.classList.add('hidden');
+            noPhotoMsgEl.classList.remove('flex');
+            if (sliderPrevEl) sliderPrevEl.style.display = images.length > 1 ? '' : 'none';
+            if (sliderNextEl) sliderNextEl.style.display = images.length > 1 ? '' : 'none';
             document.getElementById('sliderCounter').textContent = '1 / ' + images.length;
+        } else {
+            sliderImgEl.style.display = 'none';
+            noPhotoMsgEl.classList.remove('hidden');
+            noPhotoMsgEl.classList.add('flex');
+            if (sliderPrevEl) sliderPrevEl.style.display = 'none';
+            if (sliderNextEl) sliderNextEl.style.display = 'none';
+            document.getElementById('sliderCounter').textContent = '0 / 0';
         }
 
         // Maps
