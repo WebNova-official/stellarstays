@@ -91,7 +91,7 @@ app.post("/api/upload", async (req, res) => {
         const result = await cloudinary.uploader.upload(data, {
             folder:         "stellarstays",
             transformation: [
-                { width: 1200, height: 900, crop: "fill", quality: "auto:good", fetch_format: "auto" }
+                { width: 1920, height: 1440, crop: "limit", quality: "auto:best", fetch_format: "auto" }
             ],
         });
         res.json({ url: result.secure_url });
