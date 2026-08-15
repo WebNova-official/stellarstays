@@ -10,29 +10,12 @@
 // DASHBOARD
 // ═══════════════════════════════════════
 
-function populateMonthSelector() {
-    var sel = document.getElementById('dash_report_month');
-    if (!sel) return;
-    var now = new Date();
-    sel.innerHTML = '';
-    for (var i = 0; i < 12; i++) {
-        var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        var label = d.toLocaleString('default', { month: 'long', year: 'numeric' });
-        var val = (d.getFullYear()) + '-' + String(d.getMonth() + 1).padStart(2, '0');
-        var opt = document.createElement('option');
-        opt.value = val; opt.textContent = label;
-        if (i === 0) opt.selected = true;
-        sel.appendChild(opt);
-    }
-}
-
 async function loadDashboard() {
     loadDashboardActiveVillas();
     loadDashboardCustomBookings();
-    loadVillaMonthlyReport();
 }
 
-// ── Manual refresh — spins the icon while KPIs + villa report reload ──
+// ── Manual refresh — spins the icon while KPIs reload ──
 async function refreshDashboard(btn) {
     var icon = btn ? btn.querySelector('i') : null;
     if (icon) icon.classList.add('fa-spin');
@@ -41,7 +24,6 @@ async function refreshDashboard(btn) {
         await Promise.all([
             loadDashboardActiveVillas(),
             loadDashboardCustomBookings(),
-            loadVillaMonthlyReport(),
         ]);
     } finally {
         if (icon) icon.classList.remove('fa-spin');
@@ -58,89 +40,6 @@ async function loadDashboardActiveVillas() {
         el.textContent = active;
     } catch(e) {
         el.textContent = '—';
-    }
-}
-
-// ── Monthly per-villa report ──
-async function loadVillaMonthlyReport() {
-    var el = document.getElementById('dash_villa_report');
-    var sel = document.getElementById('dash_report_month');
-    if (!sel) return;
-    var monthVal = sel.value; // YYYY-MM
-    var year = parseInt(monthVal.split('-')[0]);
-    var month = parseInt(monthVal.split('-')[1]);
-    el.innerHTML = '<div class="text-sm text-gray-400 text-center py-6 animate-pulse">Loading report…</div>';
-
-    try {
-        if (!SF_GROUP_ID) { el.innerHTML = '<div class="text-sm text-gray-400 text-center py-6">SF Group ID not configured in .env</div>'; return; }
-        var hotels = await sfFetch('/core/api/v1/beservice/grouphotels?groupId=' + SF_GROUP_ID);
-        if (!hotels || !hotels.length) { el.innerHTML = '<div class="text-sm text-gray-400 text-center py-6">No hotels found.</div>'; return; }
-
-        var fromDate = formatDDMMYYYY(new Date(year, month-1, 1));
-        var toDate   = formatDDMMYYYY(new Date(year, month, 0));
-
-        var calResults = await Promise.allSettled(hotels.map(function(h) {
-            return sfFetch('/core/api/v1/beservice/hotelcalendar/?hotelId=' + h.hotelId + '&fromDate=' + fromDate + '&toDate=' + toDate);
-        }));
-
-        var totalMonthRev = 0;
-        var html = '<div class="overflow-x-auto"><table class="w-full text-sm">'
-            + '<thead><tr class="border-b border-gray-100">'
-            + '<th class="text-left py-2 px-3 text-xs font-bold text-gray-400 uppercase">Villa</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Nights Booked</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Available</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Occupancy %</th>'
-            + '<th class="text-right py-2 px-3 text-xs font-bold text-gray-400 uppercase">Est. Revenue</th>'
-            + '</tr></thead><tbody>';
-
-        hotels.forEach(function(h, i) {
-            var cal = calResults[i].status === 'fulfilled' ? calResults[i].value : null;
-            var booked = 0, avail = 0, total = 0;
-            if (cal && cal.aggregate) {
-                (cal.aggregate.bookedRoomCount || []).forEach(function(d) { booked += d.count||0; });
-                (cal.aggregate.availableRoomCount || []).forEach(function(d) { avail += d.count||0; });
-                (cal.aggregate.totalRoomCount || []).forEach(function(d) { total += d.count||0; });
-            }
-            var occ = total > 0 ? Math.round((booked / total) * 100) : 0;
-            // Estimate revenue from room rates if available
-            var estRev = 0;
-            if (cal && cal.allRoomTypes) {
-                cal.allRoomTypes.forEach(function(rt) {
-                    (rt.ratePlans || []).forEach(function(rp) {
-                        (rp.rateInfoMap || []).forEach(function(day) {
-                            var price = day.occupancyPricing && (day.occupancyPricing['1'] || 0);
-                            // count booked rooms that day
-                            var dayBooked = 0;
-                            (rt.bookedRoomCount || []).forEach(function(bd) { if (bd.date === day.date) dayBooked = bd.count||0; });
-                            estRev += price * dayBooked;
-                        });
-                    });
-                });
-            }
-            totalMonthRev += estRev;
-            var occColor = occ >= 70 ? 'text-emerald-600' : occ >= 40 ? 'text-amber-600' : 'text-red-500';
-            html += '<tr class="border-b border-gray-50 hover:bg-gray-50">'
-                + '<td class="py-3 px-3 font-semibold text-[#0f1f3d]">' + h.hotelName + '<div class="text-xs text-gray-400 font-normal">' + h.hotelCity + '</div></td>'
-                + '<td class="py-3 px-3 text-right font-bold">' + booked + '</td>'
-                + '<td class="py-3 px-3 text-right text-gray-400">' + avail + '</td>'
-                + '<td class="py-3 px-3 text-right font-bold ' + occColor + '">' + occ + '%</td>'
-                + '<td class="py-3 px-3 text-right font-black text-[#0f1f3d]">' + (estRev > 0 ? '₹' + estRev.toLocaleString('en-IN') : '<span class=\"text-gray-300\">—</span>') + '</td>'
-                + '</tr>';
-        });
-
-        html += '</tbody>';
-        if (totalMonthRev > 0) {
-            html += '<tfoot><tr class="border-t-2 border-gray-200"><td colspan="4" class="py-3 px-3 font-black text-[#0f1f3d]">Total</td><td class="py-3 px-3 text-right font-black text-indigo-600 text-base">₹' + totalMonthRev.toLocaleString('en-IN') + '</td></tr></tfoot>';
-        }
-        html += '</table></div>';
-
-        el.innerHTML = html;
-
-        // Update month revenue KPI
-        document.getElementById('dash_month_rev').textContent = totalMonthRev > 0 ? '₹' + totalMonthRev.toLocaleString('en-IN') : '—';
-
-    } catch(e) {
-        el.innerHTML = '<div class="text-sm text-red-400 text-center py-6">Error: ' + e.message + '</div>';
     }
 }
 
@@ -469,23 +368,6 @@ function kpi(label, val) {
                 <div class="stat-card">
                     <div class="text-xs text-gray-400 font-semibold mb-1">Active Villas</div>
                     <div class="text-2xl font-black text-amber-600" id="dash_active_villas">—</div>
-                </div>
-            </div>
-
-            <!-- Per-Villa Monthly Report -->
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="text-sm font-black text-[#0f1f3d]">Monthly Report — Per Villa</div>
-                    <div class="flex gap-2 items-center">
-                        <select id="dash_report_month" class="form-input text-xs" style="width:auto;padding:6px 10px;">
-                        </select>
-                        <button onclick="loadVillaMonthlyReport()" class="btn-ghost text-xs flex items-center gap-1.5">
-                            <i class="fa-solid fa-file-chart-column text-xs"></i> Load
-                        </button>
-                    </div>
-                </div>
-                <div id="dash_villa_report">
-                    <div class="text-sm text-gray-400 text-center py-6">Select a month and click Load.</div>
                 </div>
             </div>
 
@@ -895,7 +777,6 @@ function saveSfConfig() { /* no-op: keys in .env */ }
 
 document.addEventListener('DOMContentLoaded', function() {
     loadSfConfig();
-    populateMonthSelector();
 });
 
 // ── SF API helper — routes through backend proxy, key stays server-side ──
