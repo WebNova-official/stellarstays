@@ -1114,6 +1114,22 @@
         );
     }
 
+    // ── Helper: does [checkIn, checkOut) overlap any of a property's blocked dates?
+    //    blockedDates is an array of "YYYY-MM-DD" strings (each string = one blocked night).
+    function isAvailable(property, checkIn, checkOut) {
+        if (!checkIn || !checkOut) return true; // no dates picked -> don't filter by availability
+        if (!Array.isArray(property.blockedDates) || property.blockedDates.length === 0) return true;
+
+        const start = new Date(checkIn);
+        const end   = new Date(checkOut);
+
+        return !property.blockedDates.some(dateStr => {
+            const d = new Date(dateStr);
+            // Blocked night d is a conflict if it falls within [start, end)
+            return d >= start && d < end;
+        });
+    }
+
     // ── Search — reads from whichever layout is active (mobile or desktop)
     function handleSearch() {
         const isMobile = window.innerWidth < 768;
@@ -1125,10 +1141,21 @@
             ? document.getElementById('searchGuests')
             : document.getElementById('searchGuestsDesktop')
         ).value) || 1;
+        const checkIn = (isMobile
+            ? document.getElementById('startDateInput')
+            : document.getElementById('startDateInputDesktop')
+        ).value || '';
+        const checkOut = (isMobile
+            ? document.getElementById('endDateInput')
+            : document.getElementById('endDateInputDesktop')
+        ).value || '';
+
         const filtered = propertiesInventory.filter(p =>
             (!text || (p.location||'').toLowerCase().includes(text) || (p.name||'').toLowerCase().includes(text)) &&
-            (p.guests || 0) >= guests
+            (p.guests || 0) >= guests &&
+            isAvailable(p, checkIn, checkOut)
         );
+
         document.getElementById('gridTitle').innerText = text ? `Results for "${text}"` : 'Search Results';
         renderProperties(filtered);
         // Scroll down to results
