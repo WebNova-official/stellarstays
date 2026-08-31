@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking Confirmed — StellarStays</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --brand-navy: #0f1f3d; --brand-amber: #f59e0b; --brand-cream: #fdf8f0; }
+        body { font-family: 'DM Sans', sans-serif; background: #f8f7f4; }
+        h1, h2, .display { font-family: 'Playfair Display', serif; }
+        @keyframes pop { 0%{transform:scale(0.5);opacity:0} 70%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
+        .pop { animation: pop 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        .fade-up { animation: fadeUp 0.5s ease both; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- NAV -->
+    <nav class="bg-white border-b border-gray-100 px-4 md:px-8 py-3.5 flex justify-between items-center sticky top-0 z-50 shadow-sm">
+        <a href="index.html" class="flex items-center gap-2">
+            <img src="logo.jpeg" alt="Stellar Stays" style="height:48px; width:auto; border-radius:10px;" />
+        </a>
+        <a href="https://wa.me/919876543210" target="_blank" class="bg-emerald-500 text-white w-9 h-9 rounded-full flex items-center justify-center text-base hover:bg-emerald-600 transition shadow-sm">
+            <i class="fa-brands fa-whatsapp"></i>
+        </a>
+    </nav>
+
+    <main class="flex-grow max-w-2xl mx-auto w-full px-4 py-12 space-y-6">
+
+        <!-- Success card -->
+        <div class="bg-white rounded-3xl border border-gray-100 shadow-lg overflow-hidden fade-up">
+
+            <!-- Green header -->
+            <div class="bg-emerald-500 px-8 py-10 text-center text-white space-y-3">
+                <div class="pop inline-flex w-20 h-20 rounded-full bg-white/20 items-center justify-center mx-auto">
+                    <i class="fa-solid fa-circle-check text-5xl text-white"></i>
+                </div>
+                <h1 class="text-2xl font-black mt-2">Booking Request Received!</h1>
+                <p class="text-emerald-100 text-sm font-medium">Your stay is pending host confirmation. We'll reach out shortly.</p>
+                <div class="inline-block bg-white/20 border border-white/30 rounded-xl px-5 py-2 mt-1">
+                    <span class="text-xs font-bold text-emerald-100 uppercase tracking-widest">Booking Ref</span>
+                    <div id="bookingRef" class="text-xl font-black tracking-widest">—</div>
+                </div>
+            </div>
+
+            <!-- Details -->
+            <div class="px-8 py-7 space-y-5">
+                <h2 class="text-base font-black text-[--brand-navy] uppercase tracking-wider">Booking Summary</h2>
+
+                <div class="bg-[--brand-cream] rounded-2xl border border-amber-100 p-5 space-y-3 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 font-medium">Property</span>
+                        <span id="confProperty" class="font-bold text-[--brand-navy] text-right max-w-[55%]">—</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 font-medium">Guest</span>
+                        <span id="confName" class="font-bold text-[--brand-navy]">—</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 font-medium">Check-in</span>
+                        <span id="confCheckIn" class="font-bold text-[--brand-navy]">—</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 font-medium">Check-out</span>
+                        <span id="confCheckOut" class="font-bold text-[--brand-navy]">—</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 font-medium">Nights</span>
+                        <span id="confNights" class="font-bold text-[--brand-navy]">—</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 font-medium">Guests</span>
+                        <span id="confGuests" class="font-bold text-[--brand-navy]">—</span>
+                    </div>
+                    <div id="confAddonsRow" class="flex justify-between hidden">
+                        <span class="text-gray-500 font-medium">Add-ons</span>
+                        <span id="confAddons" class="font-bold text-[--brand-navy] text-right max-w-[55%]">—</span>
+                    </div>
+                    <div class="border-t border-amber-200 pt-3 flex justify-between">
+                        <span class="font-black text-[--brand-navy]">Total Payable</span>
+                        <span id="confTotal" class="font-black text-emerald-600 text-base">₹0</span>
+                    </div>
+                </div>
+
+                <!-- Status pill -->
+                <div class="flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-4 py-2.5 rounded-xl">
+                    <i class="fa-solid fa-clock text-amber-500"></i>
+                    Status: <span id="confStatus" class="uppercase tracking-wider">Pending</span>
+                    &nbsp;·&nbsp; You'll be contacted via WhatsApp / Email to confirm.
+                </div>
+
+                <!-- Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 pt-1">
+                    <a href="index.html" class="flex-1 text-center bg-[--brand-navy] hover:bg-blue-900 text-white font-bold py-3 rounded-xl transition text-sm">
+                        ← Browse More Stays
+                    </a>
+                    <a id="whatsappHost" href="https://wa.me/919876543210" target="_blank"
+                       class="flex-1 text-center bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                        <i class="fa-brands fa-whatsapp"></i> Chat with Host
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-center text-xs text-gray-400 font-medium fade-up" style="animation-delay:0.2s">
+            <i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i>
+            Free cancellation if cancelled 7+ days before check-in.
+        </p>
+    </main>
+
+    <footer class="text-center text-[11px] text-gray-400 py-6 border-t border-gray-100">
+        © 2026 StellarStays. All rights reserved.
+    </footer>
+
+    <script>
+    function getApiBase() {
+        const { hostname, port } = window.location;
+        return (port && port !== '5000') ? `http://${hostname}:5000/api` : '/api';
+    }
+
+    async function loadConfirmation() {
+        const params      = new URLSearchParams(window.location.search);
+        const bookingId   = params.get('bookingId');
+        const sfBookingId = params.get('sfBookingId');
+
+        if (sfBookingId) {
+            await loadSfConfirmation(sfBookingId, params);
+        } else if (bookingId) {
+            await loadLocalConfirmation(bookingId);
+        } else {
+            showError();
+        }
+    }
+
+    async function loadSfConfirmation(sfBookingId, params) {
+        // Try to fetch full booking info from SF API
+        const SF_API_KEY = localStorage.getItem('sf_api_key') || '';
+        const status     = params.get('status') || 'confirmed';
+        const property   = params.get('property') || '—';
+        const total      = parseInt(params.get('total')) || 0;
+
+        // Update header based on status
+        if (status === 'enquiry') {
+            document.querySelector('.bg-emerald-500 h1').textContent     = 'Booking Enquiry Submitted!';
+            document.querySelector('.bg-emerald-500 p').textContent      = 'Your room is held for 30 minutes. Complete payment to confirm.';
+            document.querySelector('#confStatus').textContent            = 'ENQUIRY';
+            document.querySelector('.text-amber-700').innerHTML          = '<i class="fa-solid fa-clock text-amber-500"></i> Status: <span id="confStatus" class="uppercase tracking-wider">ENQUIRY</span> &nbsp;·&nbsp; Complete payment within 30 minutes to confirm.';
+        }
+
+        document.getElementById('bookingRef').textContent   = sfBookingId;
+        document.getElementById('confProperty').textContent = property;
+        document.getElementById('confTotal').textContent    = '₹' + total.toLocaleString('en-IN');
+        document.getElementById('confStatus').textContent   = status.toUpperCase();
+
+        // Try to get full details from SF API
+        try {
+            const headers = {};
+            if (SF_API_KEY) headers['X-SF-API-KEY'] = SF_API_KEY;
+            const res = await fetch('https://api.stayflexi.com/core/api/v1/beservice/bookinginfo?bookingId=' + encodeURIComponent(sfBookingId), { headers });
+            if (!res.ok) throw new Error();
+            const b = await res.json();
+            if (b.status) {
+                document.getElementById('confName').textContent    = (b.customerDetails?.firstName || '') + ' ' + (b.customerDetails?.lastName || '');
+                document.getElementById('confCheckIn').textContent = b.checkinPretty  || b.checkin  || '—';
+                document.getElementById('confCheckOut').textContent= b.checkoutPretty || b.checkout || '—';
+                // nights from roomStays
+                if (b.checkin && b.checkout) {
+                    const ciD  = b.checkin.split(' ')[0].split('-');
+                    const coD  = b.checkout.split(' ')[0].split('-');
+                    const n    = Math.round((new Date(+ciD[2], +ciD[1]-1, +ciD[0]) - new Date(+coD[2], +coD[1]-1, +coD[0])) / -86400000);
+                    document.getElementById('confNights').textContent = n + ' night' + (n !== 1 ? 's' : '');
+                }
+                const g = b.roomStays?.[0];
+                if (g) document.getElementById('confGuests').textContent = (g.numAdults||1) + ' Adult' + (g.numAdults!==1?'s':'');
+                document.getElementById('confTotal').textContent = (b.currency||'INR') + ' ' + (b.paymentDetails?.sellRate||total).toLocaleString('en-IN');
+                document.getElementById('confStatus').textContent = b.bookingStatus || status.toUpperCase();
+            }
+        } catch(e) { /* use URL params already set */ }
+    }
+
+    async function loadLocalConfirmation(bookingId) {
+        try {
+            const res = await fetch(`${getApiBase()}/bookings/${bookingId}`);
+            if (!res.ok) throw new Error();
+            const b = await res.json();
+
+            document.getElementById('bookingRef').textContent    = b.bookingRef || '—';
+            document.getElementById('confProperty').textContent  = b.propertyName || '—';
+            document.getElementById('confName').textContent      = b.guestName || '—';
+            document.getElementById('confCheckIn').textContent   = b.checkIn || '—';
+            document.getElementById('confCheckOut').textContent  = b.checkOut || '—';
+            document.getElementById('confNights').textContent    = `${b.nights} night${b.nights !== 1 ? 's' : ''}`;
+            document.getElementById('confTotal').textContent     = `₹${(b.totalAmount||0).toLocaleString('en-IN')}`;
+            document.getElementById('confStatus').textContent    = b.status || 'pending';
+
+            let gParts = [`${b.adults} Adult${b.adults !== 1 ? 's' : ''}`];
+            if (b.children) gParts.push(`${b.children} Child${b.children !== 1 ? 'ren' : ''}`);
+            if (b.infants)  gParts.push(`${b.infants} Infant${b.infants !== 1 ? 's' : ''}`);
+            document.getElementById('confGuests').textContent = gParts.join(', ');
+
+            const addons = [];
+            if (b.addonChef)    addons.push('🍳 Private Gourmet Chef');
+            if (b.addonBonfire) addons.push('🔥 Sunset Bonfire Kit');
+            if (addons.length) {
+                document.getElementById('confAddonsRow').classList.remove('hidden');
+                document.getElementById('confAddons').textContent = addons.join(', ');
+            }
+        } catch {
+            showError();
+        }
+    }
+
+    function showError() {
+        document.querySelector('main').innerHTML = `
+            <div class="text-center py-20 space-y-3">
+                <i class="fa-regular fa-circle-xmark text-5xl text-red-300 block"></i>
+                <p class="text-red-500 font-semibold">Could not load booking details.</p>
+                <a href="index.html" class="text-indigo-600 font-bold underline text-sm">← Back to Home</a>
+            </div>`;
+    }
+
+    loadConfirmation();
+    </script>
+</body>
+</html>

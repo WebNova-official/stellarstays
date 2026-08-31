@@ -1,0 +1,19 @@
+backend/node_modules/
+backend/.env
+backend/.env.local
+
+# Logs
+*.log
+
+# Build files
+dist/
+build/
+.next/
+out/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
