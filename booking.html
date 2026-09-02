@@ -1052,15 +1052,45 @@ async function loadBookingPage() {
                 console.warn('SF hotel content fetch failed, using stored guest count:', e.message);
             }
 
+            var sfCalendarFetchFailed = false;
             try {
                 var today = new Date();
                 var future = new Date(); future.setDate(future.getDate() + 90);
-                var calendar = await sfFetch('/core/api/v1/beservice/hotelcalendar/?hotelId=' + sfHotelId
-                    + '&fromDate=' + fmtSfDate(today) + '&toDate=' + fmtSfDate(future));
+                var calendarUrl = '/core/api/v1/beservice/hotelcalendar/?hotelId=' + sfHotelId
+                    + '&fromDate=' + fmtSfDate(today) + '&toDate=' + fmtSfDate(future);
+                var calendar;
+                try {
+                    calendar = await sfFetch(calendarUrl);
+                } catch (firstErr) {
+                    // One retry — transient network/API hiccups are common enough
+                    // that a single retry avoids unnecessarily failing closed.
+                    console.warn('SF calendar fetch failed once, retrying:', firstErr.message);
+                    calendar = await sfFetch(calendarUrl);
+                }
                 var avail = (calendar.aggregate && calendar.aggregate.availableRoomCount) || [];
                 sfLiveBlockedDates = avail.filter(function(d) { return d.count === 0; }).map(function(d) { return d.date; });
             } catch (e) {
-                console.warn('SF calendar fetch failed, using stored blocked dates only:', e.message);
+                // FAIL CLOSED, not open: if we can't verify real availability,
+                // we must NOT let the calendar silently show every date as
+                // bookable — that's the worst failure mode for a booking
+                // widget. Instead, block the whole lookahead window and show
+                // a visible banner so guests aren't misled into picking dates
+                // that were never actually checked.
+                console.error('SF calendar fetch failed after retry — blocking all dates as a safety fallback:', e.message);
+                sfCalendarFetchFailed = true;
+                var d90 = new Date(); var end90 = new Date(); end90.setDate(end90.getDate() + 90);
+                var walk = new Date(d90);
+                sfLiveBlockedDates = [];
+                while (walk <= end90) {
+                    sfLiveBlockedDates.push(toLocalYMD(walk));
+                    walk.setDate(walk.getDate() + 1);
+                }
+                var availBannerFail = document.getElementById('availBanner');
+                if (availBannerFail) {
+                    availBannerFail.innerHTML = '<div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-red-50"><i class="fa-solid fa-triangle-exclamation text-red-500 text-2xl"></i></div>'
+                        + '<div class="flex-1"><div class="text-sm font-black text-red-700">Live availability temporarily unavailable</div>'
+                        + '<div class="text-xs text-gray-500 mt-0.5">We couldn\'t confirm real-time availability just now. Please contact us via WhatsApp to check dates and book.</div></div>';
+                }
             }
         }
 
