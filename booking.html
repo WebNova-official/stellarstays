@@ -780,9 +780,50 @@ function getApiBase() {
 function initSfDatePickers(blockedDates) {
     var el = document.getElementById('dateRangePickerMain');
     if (!el) return;
+
+    // blockedSet = set of YYYY-MM-DD nights that are already occupied
+    // (availableRoomCount === 0 for that night, per the live SF calendar).
+    var blockedSet = {};
+    (blockedDates || []).forEach(function(d) { blockedSet[d] = true; });
+
+    // True if every night from `start` up to (but NOT including) `end` is free.
+    // The checkout date itself is never checked here — checking out that
+    // morning doesn't require that night to be free, only the nights you'd
+    // actually be staying.
+    function rangeIsFree(start, end) {
+        var d = new Date(start);
+        var endDate = new Date(end);
+        while (d < endDate) {
+            var ymd = toLocalYMD(d);
+            if (blockedSet[ymd]) return false;
+            d.setDate(d.getDate() + 1);
+        }
+        return true;
+    }
+
     var cfg = {
         mode: 'range', minDate: 'today', dateFormat: 'Y-m-d',
-        disable: blockedDates || [],
+        // Function-based disable so behavior differs for picking a check-in
+        // (no date selected yet) vs. picking a checkout (one date selected).
+        // This is what makes same-day turnover and 1-night stays work: a
+        // date that's someone else's check-in (occupied night) can still be
+        // *your* checkout date, as long as the nights before it are free.
+        disable: [function(date) {
+            var ymd = toLocalYMD(date);
+            var selected = el._flatpickr ? el._flatpickr.selectedDates : [];
+
+            if (selected.length === 1) {
+                // Picking checkout: block only if it's not after check-in,
+                // or if any night strictly between check-in and this date
+                // is occupied. The date itself being occupied does NOT
+                // block it.
+                if (date <= selected[0]) return true;
+                return !rangeIsFree(selected[0], date);
+            }
+
+            // Picking check-in: can't start a stay on an occupied night.
+            return !!blockedSet[ymd];
+        }],
         onChange: function(dates) {
             if (dates.length !== 2) return;
             checkIn  = toLocalYMD(dates[0]);
