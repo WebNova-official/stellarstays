@@ -24,6 +24,7 @@ const sf       = require('./stayflexiService');
 const {
     parseBookingDate,
     startOfDay,
+    toYMD,
     toSfDate,
     nightsBetween,
     rangesOverlap,
@@ -252,4 +253,181 @@ async function isPropertyAvailable(propertyId, start, end) {
     return { available: true, reason: null };
 }
 
-module.exports = { findAvailable, isPropertyAvailable, holdsInventory };
+// ── Admin calendar ──────────────────────────────────────────────────────────
+// Day-by-day view of one villa for the admin panel: what each night costs and
+// who, if anyone, is in it.
+//
+// Reuses exactly the same three sources as findAvailable() (own bookings,
+// Property.blockedDates, Stayflexi's calendar) so the admin calendar can never
+// disagree with what the public site will sell. Where it differs is the
+// failure policy: findAvailable() hides a villa it can't confirm, but an admin
+// staring at a grid needs to know the difference between "free" and "we
+// couldn't reach Stayflexi". Those days come back as status 'unknown' and the
+// UI paints them differently rather than pretending they're bookable.
+//
+// Rates come from Property.pricePerNight / weekendRate (kept fresh by
+// rateSyncService), with Fri + Sat nights priced at the weekend rate — the
+// same rule js/booking.js applies at checkout, so the number shown here is the
+// number the guest is charged.
+
+function isWeekendNight(date) {
+    const dow = date.getDay();      // 0=Sun … 6=Sat
+    return dow === 5 || dow === 6;  // Friday & Saturday
+}
+
+// Only fields the admin panel actually needs. Deliberately explicit rather
+// than spreading the booking — no reason to ship Razorpay ids to the browser.
+function publicBooking(b) {
+    return {
+        id:           String(b._id),
+        bookingRef:   b.bookingRef || null,
+        guestName:    b.guestName || '',
+        guestEmail:   b.guestEmail || '',
+        guestPhone:   b.guestPhone || '',
+        checkIn:      b.checkIn,
+        checkOut:     b.checkOut,
+        nights:       b.nights || 0,
+        adults:       b.adults || 0,
+        children:     b.children || 0,
+        infants:      b.infants || 0,
+        status:       b.status || '',
+        paid:         !!b.paid,
+        totalAmount:  b.totalAmount || b.amount || 0,
+        addons:       Array.isArray(b.addons) ? b.addons : [],
+        source:       b.source || 'website',
+        createdAt:    b.createdAt || null,
+    };
+}
+
+/**
+ * @param {string} propertyId
+ * @param {Date}   from  first day shown (inclusive)
+ * @param {Date}   to    last day shown  (inclusive)
+ * @returns {Promise<{property: object, days: Array, sfLinked: boolean, sfDown: boolean}>}
+ */
+async function getPropertyCalendar(propertyId, from, to) {
+    const start = startOfDay(from);
+    const end   = startOfDay(to);
+
+    const property = await Property.findById(propertyId).lean();
+    if (!property) {
+        const err = new Error('Property not found');
+        err.code = 'NOT_FOUND';
+        throw err;
+    }
+
+    const weekdayRate = Number(property.pricePerNight) || 0;
+    const weekendRate = Number(property.weekendRate) || weekdayRate;
+
+    // ── 1. Our own bookings, indexed by night ──
+    // Every booking for this villa is read, not just ones inside the window:
+    // the collection is small and a stay can straddle the window edge. The
+    // stored dates are strings in two formats, so filtering has to happen in
+    // JS via parseBookingDate() anyway (see utils/dates.js).
+    const bookings = await Booking.find({ property: propertyId }).lean();
+
+    const occupiedBy = new Map();   // 'YYYY-MM-DD' -> [booking]
+    const checkoutOn = new Map();   // 'YYYY-MM-DD' -> [booking]
+    const unparseable = [];
+
+    bookings.forEach(b => {
+        if (!holdsInventory(b)) return;
+        const bIn  = parseBookingDate(b.checkIn);
+        const bOut = parseBookingDate(b.checkOut);
+        if (!bIn || !bOut) {
+            console.warn('[calendar] unparseable booking dates for booking',
+                String(b._id), b.checkIn, b.checkOut);
+            unparseable.push(publicBooking(b));
+            return;
+        }
+        const slim = publicBooking(b);
+        nightsBetween(startOfDay(bIn), startOfDay(bOut)).forEach(night => {
+            if (!occupiedBy.has(night)) occupiedBy.set(night, []);
+            occupiedBy.get(night).push(slim);
+        });
+        const out = toYMD(startOfDay(bOut));
+        if (!checkoutOn.has(out)) checkoutOn.set(out, []);
+        checkoutOn.get(out).push(slim);
+    });
+
+    // ── 2. Admin-blocked dates ──
+    const blocked = new Set((property.blockedDates || []).map(s => String(s).slice(0, 10)));
+
+    // ── 3. Stayflexi, for linked properties ──
+    // One call for the whole window. A failure here is reported, not fatal:
+    // days we couldn't confirm become 'unknown' so the admin sees the gap.
+    const sfLinked = !!property.stayflexi;
+    let sfSoldOut = null;
+    let sfError = null;
+
+    if (sfLinked) {
+        try {
+            // +1 day so the last day of the window is itself covered
+            const sfEnd = new Date(end);
+            sfEnd.setDate(sfEnd.getDate() + 1);
+            sfSoldOut = await sfSoldOutNights(String(property.stayflexi), start, sfEnd);
+        } catch (e) {
+            sfError = e.message;
+            console.warn('[calendar] Stayflexi calendar failed for hotel',
+                property.stayflexi, e.message);
+        }
+    }
+
+    // ── Build the grid ──
+    const today = startOfDay(new Date());
+    const days = [];
+    const cursor = new Date(start);
+
+    while (cursor <= end) {
+        const ymd     = toYMD(cursor);
+        const weekend = isWeekendNight(cursor);
+        const mine    = occupiedBy.get(ymd) || [];
+        const leaving = checkoutOn.get(ymd) || [];
+
+        // Precedence matters. A night we've sold is 'booked' even if it's also
+        // in blockedDates — the guest details are the more useful truth, and a
+        // stale block shouldn't hide a real booking from the admin.
+        let status;
+        if (mine.length)                       status = 'booked';
+        else if (blocked.has(ymd))             status = 'blocked';
+        else if (sfLinked && !sfSoldOut)       status = 'unknown';   // SF unreachable
+        else if (sfSoldOut && sfSoldOut.has(ymd)) status = 'channel'; // sold on an OTA
+        else                                   status = 'available';
+
+        days.push({
+            date:      ymd,
+            dow:       cursor.getDay(),
+            weekend,
+            past:      cursor < today,
+            today:     ymd === toYMD(today),
+            rate:      weekend ? weekendRate : weekdayRate,
+            status,
+            bookings:  mine,
+            checkouts: leaving,
+        });
+
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return {
+        property: {
+            id:            String(property._id),
+            name:          property.name,
+            location:      property.location,
+            status:        property.status || 'Active',
+            pricePerNight: weekdayRate,
+            weekendRate,
+            minStay:       property.minStay || 1,
+            stayflexi:     property.stayflexi || '',
+        },
+        days,
+        sfLinked,
+        sfDown: sfLinked && !sfSoldOut,
+        sfError,
+        // Surfaced so a booking with corrupt dates isn't silently invisible on
+        // the grid — the UI warns instead of quietly dropping it.
+        unparseableBookings: unparseable,
+    };
+}
+
+module.exports = { findAvailable, isPropertyAvailable, holdsInventory, getPropertyCalendar };
