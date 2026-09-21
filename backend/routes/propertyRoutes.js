@@ -1,6 +1,12 @@
 const router    = require("express").Router();
 const Property  = require("../models/Property");
 const cloudinary = require("cloudinary").v2;
+const availability = require("../services/availabilityService");
+const { parseYMD, startOfDay, nightCount } = require("../utils/dates");
+
+// Upper bound on an online stay. Anything longer is almost always a typo or a
+// scraper walking the calendar, and it makes the Stayflexi window huge.
+const MAX_STAY_NIGHTS = Number(process.env.MAX_STAY_NIGHTS) || 60;
 
 // ── mapUrl validation ──
 // mapUrl is rendered directly inside an <iframe src="..."> in admin.html's
@@ -93,6 +99,83 @@ router.get("/", async (req, res) => {
         res.json(properties);
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+// ── GET /api/properties/available ──────────────────────────────────────────
+// Date-filtered search. index.html calls this the moment both dates are set
+// and renders ONLY what comes back, so a villa that's booked for those nights
+// is never drawn at all.
+//
+//   GET /api/properties/available?checkIn=2026-09-20&checkOut=2026-09-22&guests=6
+//     200 [ ...properties confirmed free ]
+//     400 bad or missing dates
+//     503 availability could not be determined
+//
+// MUST stay above router.get("/:id") — Express matches in order, and "available"
+// would otherwise be swallowed as an :id and come back 500 (cast to ObjectId
+// failed). That single line of ordering is the whole bug in a lot of these.
+router.get("/available", async (req, res) => {
+    const start = parseYMD(req.query.checkIn);
+    const end   = parseYMD(req.query.checkOut);
+
+    if (!start || !end) {
+        return res.status(400).json({ error: "checkIn and checkOut must be YYYY-MM-DD dates" });
+    }
+    if (end <= start) {
+        return res.status(400).json({ error: "checkOut must be after checkIn" });
+    }
+    if (start < startOfDay(new Date())) {
+        return res.status(400).json({ error: "checkIn cannot be in the past" });
+    }
+    if (nightCount(start, end) > MAX_STAY_NIGHTS) {
+        return res.status(400).json({ error: `Stays longer than ${MAX_STAY_NIGHTS} nights aren't bookable online` });
+    }
+
+    const guests = Number(req.query.guests);
+    const minGuests = Number.isFinite(guests) && guests > 0 ? guests : 0;
+
+    try {
+        const { available, checked, sfDown } =
+            await availability.findAvailable(start, end, minGuests);
+
+        console.log(`[availability] ${req.query.checkIn}→${req.query.checkOut} `
+            + `guests=${minGuests || "any"} — ${available.length}/${checked} free`
+            + (sfDown ? " (some Stayflexi lookups failed, those villas excluded)" : ""));
+
+        res.set("Cache-Control", "no-store");
+        res.json(available);
+    } catch (err) {
+        console.error("[availability] lookup failed:", err.message);
+        // Fail closed. Returning the unfiltered list here is what sells a night
+        // that's already taken — an error the guest can retry is far cheaper.
+        res.status(503).json({
+            error: "Availability is temporarily unavailable. Please try again."
+        });
+    }
+});
+
+// ── GET /api/properties/:id/availability ───────────────────────────────────
+// Single-property re-check. The search result is a snapshot; between the grid
+// and the payment screen someone else can take the villa. booking.html should
+// call this before opening Razorpay.
+router.get("/:id/availability", async (req, res) => {
+    const start = parseYMD(req.query.checkIn);
+    const end   = parseYMD(req.query.checkOut);
+
+    if (!start || !end || end <= start) {
+        return res.status(400).json({ error: "Invalid date range" });
+    }
+
+    try {
+        const result = await availability.isPropertyAvailable(req.params.id, start, end);
+        res.set("Cache-Control", "no-store");
+        res.json(result);
+    } catch (err) {
+        console.error("[availability:single] lookup failed:", err.message);
+        res.status(503).json({
+            error: "Availability is temporarily unavailable. Please try again."
+        });
     }
 });
 
