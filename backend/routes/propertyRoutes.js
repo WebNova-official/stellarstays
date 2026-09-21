@@ -179,6 +179,53 @@ router.get("/:id/availability", async (req, res) => {
     }
 });
 
+// ── GET /api/properties/:id/calendar ───────────────────────────────────────
+// Day-by-day availability + nightly rate for one villa, for the admin panel's
+// Calendar tab. Each day carries its status (available / booked / blocked /
+// channel / unknown), the rate that night, and — for booked nights — the guest
+// details behind it, so clicking a red square can show who's staying.
+//
+//   GET /api/properties/<id>/calendar?from=2026-09-01&to=2026-10-31
+//     200 { property, days: [...], sfLinked, sfDown }
+//     400 bad dates
+//     404 no such property
+//     503 could not be determined at all
+//
+// MUST stay above router.get("/:id") for the same reason /available does —
+// Express matches in order and would otherwise cast "calendar" to an ObjectId.
+//
+// Unlike /available this does NOT fail closed on a Stayflexi outage. The admin
+// needs to see the days we do know about, with the uncertain ones flagged as
+// 'unknown', rather than an error page that hides real bookings.
+const MAX_CALENDAR_DAYS = 400;
+
+router.get("/:id/calendar", async (req, res) => {
+    const from = parseYMD(req.query.from);
+    const to   = parseYMD(req.query.to);
+
+    if (!from || !to) {
+        return res.status(400).json({ error: "from and to must be YYYY-MM-DD dates" });
+    }
+    if (to < from) {
+        return res.status(400).json({ error: "to must not be before from" });
+    }
+    if (nightCount(from, to) > MAX_CALENDAR_DAYS) {
+        return res.status(400).json({ error: `Range too large — ${MAX_CALENDAR_DAYS} days max` });
+    }
+
+    try {
+        const data = await availability.getPropertyCalendar(req.params.id, from, to);
+        res.set("Cache-Control", "no-store");   // booking data, never cache
+        res.json(data);
+    } catch (err) {
+        if (err.code === "NOT_FOUND") {
+            return res.status(404).json({ error: "Property not found" });
+        }
+        console.error("[calendar] lookup failed:", err.message);
+        res.status(503).json({ error: "Calendar is temporarily unavailable. Please try again." });
+    }
+});
+
 // Get single property
 router.get("/:id", async (req, res) => {
     try {
