@@ -1117,42 +1117,10 @@
         }
     }
 
-    // ── Location filter
-    function filterByLocation(location) {
-        document.querySelectorAll('.location-btn').forEach(btn => {
-            const t = btn.innerText.replace(/[^a-zA-Z\s]/g, '').trim().toLowerCase();
-            const active = location === 'all' ? t.includes('all') : t === location.toLowerCase();
-            btn.className = (active ? 'location-btn loc-btn-active' : 'location-btn loc-btn-inactive') +
-                ' shrink-0 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition whitespace-nowrap';
-        });
-        document.getElementById('gridTitle').innerText = location === 'all'
-            ? 'Featured Properties' : `Premium Stays in ${location}`;
-        renderProperties(location === 'all'
-            ? propertiesInventory
-            : propertiesInventory.filter(p => p.location && p.location.toLowerCase() === location.toLowerCase())
-        );
-    }
-
-    // ── Helper: does [checkIn, checkOut) overlap any of a property's blocked dates?
-    //    blockedDates is an array of "YYYY-MM-DD" strings (each string = one blocked night).
-    function isAvailable(property, checkIn, checkOut) {
-        if (!checkIn || !checkOut) return true; // no dates picked -> don't filter by availability
-        if (!Array.isArray(property.blockedDates) || property.blockedDates.length === 0) return true;
-
-        const start = new Date(checkIn);
-        const end   = new Date(checkOut);
-
-        return !property.blockedDates.some(dateStr => {
-            const d = new Date(dateStr);
-            // Blocked night d is a conflict if it falls within [start, end)
-            return d >= start && d < end;
-        });
-    }
-
-    // ── Search — reads from whichever layout is active (mobile or desktop)
-    function handleSearch() {
+    // ── Reads whichever search inputs are visible (mobile vs desktop) right now
+    function getActiveSearchState() {
         const isMobile = window.innerWidth < 768;
-        const text   = (isMobile
+        const text = (isMobile
             ? document.getElementById('searchLocation')
             : document.getElementById('searchLocationDesktop')
         ).value.toLowerCase().trim();
@@ -1168,6 +1136,87 @@
             ? document.getElementById('endDateInput')
             : document.getElementById('endDateInputDesktop')
         ).value || '';
+        return { text, guests, checkIn, checkOut };
+    }
+
+    // ── Location filter
+    function filterByLocation(location) {
+        document.querySelectorAll('.location-btn').forEach(btn => {
+            const t = btn.innerText.replace(/[^a-zA-Z\s]/g, '').trim().toLowerCase();
+            const active = location === 'all' ? t.includes('all') : t === location.toLowerCase();
+            btn.className = (active ? 'location-btn loc-btn-active' : 'location-btn loc-btn-inactive') +
+                ' shrink-0 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition whitespace-nowrap';
+        });
+        document.getElementById('gridTitle').innerText = location === 'all'
+            ? 'Featured Properties' : `Premium Stays in ${location}`;
+
+        // Keep whatever dates/guests are currently selected in effect when switching
+        // location pills, so a date-filtered view doesn't silently reset.
+        const { guests, checkIn, checkOut } = getActiveSearchState();
+        const byLocation = location === 'all'
+            ? propertiesInventory
+            : propertiesInventory.filter(p => p.location && p.location.toLowerCase() === location.toLowerCase());
+
+        renderProperties(byLocation.filter(p => (p.guests || 0) >= guests && isAvailable(p, checkIn, checkOut)));
+    }
+
+    // ── Normalize a property's "unavailable" nights into date ranges, no matter which
+    //    field/shape the API uses for it. Checks several common names/shapes so this
+    //    keeps working even if the backend doesn't use the exact field the homepage
+    //    originally assumed (blockedDates).
+    function getBookedRanges(property) {
+        const ranges = [];
+
+        // Shape A: a flat array of blocked/booked "night" date strings
+        const nightArrays = [
+            property.blockedDates,
+            property.bookedDates,
+            property.unavailableDates,
+            property.disabledDates,
+            property.calendar && property.calendar.blockedDates,
+            property.availability && property.availability.blockedDates
+        ];
+        nightArrays.forEach(arr => {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(dateStr => {
+                if (!dateStr) return;
+                const d = new Date(dateStr);
+                if (!isNaN(d)) ranges.push({ start: d, end: new Date(d.getTime() + 86400000) });
+            });
+        });
+
+        // Shape B: an array of booking/reservation objects with a date range
+        const bookingArrays = [property.bookings, property.reservations, property.blockedRanges];
+        bookingArrays.forEach(arr => {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(b => {
+                if (!b) return;
+                const s = b.checkIn || b.startDate || b.from || b.start;
+                const e = b.checkOut || b.endDate || b.to || b.end;
+                if (!s || !e) return;
+                const start = new Date(s), end = new Date(e);
+                if (!isNaN(start) && !isNaN(end)) ranges.push({ start, end });
+            });
+        });
+
+        return ranges;
+    }
+
+    // ── Does [checkIn, checkOut) overlap any of a property's booked/blocked ranges?
+    function isAvailable(property, checkIn, checkOut) {
+        if (!checkIn || !checkOut) return true; // no dates picked -> don't filter by availability
+        const ranges = getBookedRanges(property);
+        if (ranges.length === 0) return true;
+
+        const start = new Date(checkIn);
+        const end   = new Date(checkOut);
+
+        return !ranges.some(r => start < r.end && end > r.start);
+    }
+
+    // ── Search — reads from whichever layout is active (mobile or desktop)
+    function handleSearch() {
+        const { text, guests, checkIn, checkOut } = getActiveSearchState();
 
         const filtered = propertiesInventory.filter(p =>
             (!text || (p.location||'').toLowerCase().includes(text) || (p.name||'').toLowerCase().includes(text)) &&
@@ -1199,6 +1248,18 @@
 
             propertiesInventory = all.filter(p => !p.status || p.status === 'Active');
             console.log('[StellarStays] Active:', propertiesInventory.length);
+
+            // ── Diagnostics: show exactly what one property looks like, so it's easy
+            // to confirm (or correct) which field the availability check should read.
+            if (propertiesInventory[0]) {
+                console.log('[StellarStays] Sample property fields:', Object.keys(propertiesInventory[0]));
+                console.log('[StellarStays] Sample property:', propertiesInventory[0]);
+            }
+            const withKnownAvailability = propertiesInventory.filter(p => getBookedRanges(p).length > 0);
+            console.log(`[StellarStays] Properties with recognizable booked/blocked dates: ${withKnownAvailability.length} of ${propertiesInventory.length}`);
+            if (withKnownAvailability.length === 0) {
+                console.warn('[StellarStays] No property has a recognizable availability field (checked blockedDates, bookedDates, unavailableDates, disabledDates, bookings, reservations, blockedRanges). Date-based search filtering will show everyone as available until the real field name is confirmed — check "Sample property" above.');
+            }
 
             buildLocationPills(propertiesInventory);
             renderProperties(propertiesInventory);
