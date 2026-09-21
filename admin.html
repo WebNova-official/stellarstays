@@ -342,6 +342,29 @@ function kpi(label, val) {
         .sf-booking-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px; transition: box-shadow 0.2s; }
         .sf-booking-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         .stat-card { background: #fff; border-radius: 18px; border: 1px solid #f1f5f9; padding: 20px; box-shadow: 0 1px 6px rgba(0,0,0,0.04); }
+
+        /* ── Availability calendar ── */
+        .cal-key { width: 12px; height: 12px; border-radius: 4px; border: 1px solid; display: inline-block; }
+        .cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
+        .cal-head div { text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; padding-bottom: 4px; }
+        .cal-body { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+        .cal-cell { border: 1px solid #e2e8f0; border-radius: 10px; min-height: 76px; padding: 7px 8px; background: #fff;
+                    display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.12s, box-shadow 0.12s; }
+        .cal-cell.empty { border: none; background: transparent; }
+        .cal-cell.clickable { cursor: pointer; }
+        .cal-cell.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.10); }
+        .cal-daynum { font-size: 13px; font-weight: 800; color: #0f1f3d; line-height: 1; }
+        .cal-rate { font-size: 11px; font-weight: 700; color: #475569; }
+        .cal-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+        .cal-guest { font-size: 10px; font-weight: 700; color: #b91c1c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* Past days are dimmed but still readable — admins look backwards for reconciliation. */
+        .cal-cell.past { opacity: 0.55; }
+        .cal-cell.today { box-shadow: 0 0 0 2px #f59e0b; }
+        .cal-s-available { background: #ecfdf5; border-color: #a7f3d0; }
+        .cal-s-booked    { background: #fee2e2; border-color: #fca5a5; }
+        .cal-s-channel   { background: #fef3c7; border-color: #fcd34d; }
+        .cal-s-blocked   { background: #e2e8f0; border-color: #cbd5e1; }
+        .cal-s-unknown   { background: #f5f3ff; border-color: #c4b5fd; }
         .sidebar-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; text-align: left; border: none; cursor: pointer; width: 100%; transition: all 0.2s; }
     </style>
 </head>
@@ -400,6 +423,9 @@ function kpi(label, val) {
         </button>
         <button onclick="showTab('properties',this)" class="sidebar-btn active-tab text-white bg-white/10">
             <i class="fa-solid fa-building w-4 text-center"></i> Properties
+        </button>
+        <button onclick="showTab('calendar',this)" class="sidebar-btn text-slate-400 hover:bg-white/10 hover:text-white">
+            <i class="fa-solid fa-calendar-days w-4 text-center"></i> Calendar
         </button>
         <button onclick="showTab('bookings',this)" class="sidebar-btn text-slate-400 hover:bg-white/10 hover:text-white">
             <i class="fa-solid fa-calendar-check w-4 text-center"></i> Bookings
@@ -524,6 +550,44 @@ function kpi(label, val) {
 
             <div id="propertiesTable" class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading properties…</div>
+            </div>
+        </div>
+
+        <!-- ═══ BOOKINGS TAB ═══ -->
+        <!-- ═══ CALENDAR TAB ═══ -->
+        <div id="tab-calendar" class="hidden">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <div>
+                    <h1 class="text-2xl font-black text-[#0f1f3d]">Availability Calendar</h1>
+                    <p class="text-sm text-gray-500 mt-0.5">Nightly rates and bookings per villa. Click any booked night to see the guest.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <select id="calVilla" onchange="loadCalendar()" class="text-xs font-bold border border-gray-200 rounded-lg px-3 py-2 text-gray-600 min-w-[200px]">
+                        <option value="">Loading villas…</option>
+                    </select>
+                    <button onclick="calShiftMonth(-1)" class="btn-ghost" title="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
+                    <div id="calMonthLabel" class="text-sm font-black text-[#0f1f3d] min-w-[130px] text-center">—</div>
+                    <button onclick="calShiftMonth(1)" class="btn-ghost" title="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+                    <button onclick="calShiftMonth(0)" class="btn-ghost text-indigo-700 border-indigo-200">Today</button>
+                </div>
+            </div>
+
+            <!-- Legend -->
+            <div class="flex flex-wrap items-center gap-4 mb-4 text-[11px] font-semibold text-gray-500">
+                <span class="flex items-center gap-1.5"><span class="cal-key" style="background:#ecfdf5;border-color:#a7f3d0;"></span> Available</span>
+                <span class="flex items-center gap-1.5"><span class="cal-key" style="background:#fee2e2;border-color:#fca5a5;"></span> Booked (click for guest)</span>
+                <span class="flex items-center gap-1.5"><span class="cal-key" style="background:#fef3c7;border-color:#fcd34d;"></span> Booked on a channel/OTA</span>
+                <span class="flex items-center gap-1.5"><span class="cal-key" style="background:#e2e8f0;border-color:#cbd5e1;"></span> Blocked by admin</span>
+                <span class="flex items-center gap-1.5"><span class="cal-key" style="background:#f5f3ff;border-color:#c4b5fd;"></span> Unknown — Stayflexi unreachable</span>
+            </div>
+
+            <div id="calNotice" class="hidden mb-4 text-xs font-semibold rounded-xl px-4 py-3"></div>
+
+            <!-- Month summary -->
+            <div id="calSummary" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5"></div>
+
+            <div id="calGrid" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div class="p-8 text-center text-gray-400 text-sm animate-pulse">Pick a villa to see its calendar…</div>
             </div>
         </div>
 
@@ -883,7 +947,7 @@ async function sfFetch(url) {
 }
 
 // ── Tab switching ──
-var tabs = ['dashboard','properties','bookings','analytics'];
+var tabs = ['dashboard','properties','calendar','bookings','analytics'];
 function showTab(name, btn) {
     tabs.forEach(function(t) {
         document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
@@ -899,6 +963,341 @@ function showTab(name, btn) {
     if (name === 'bookings') loadBookings();
     if (name === 'analytics') loadAnalytics();
     if (name === 'dashboard') loadDashboard();
+    if (name === 'calendar') initCalendar();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// AVAILABILITY CALENDAR
+// Month grid for one villa: nightly rate on every day, colour-coded status,
+// and the guest behind any booked night.
+//
+// All three sources of "unavailable" (our bookings, admin blocks, Stayflexi)
+// are merged server-side by GET /api/properties/:id/calendar so this view can
+// never drift from what the public site actually sells. Everything below is
+// presentation only — no availability rules live here.
+// ════════════════════════════════════════════════════════════════════════
+var calState = {
+    villaId:   '',
+    year:      new Date().getFullYear(),
+    month:     new Date().getMonth(),   // 0-indexed
+    days:      [],                      // whatever the API last returned
+    byDate:    {},                      // 'YYYY-MM-DD' -> day object
+    villaName: '',
+    loading:   false,
+};
+
+var CAL_MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+
+function calEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+}
+
+function calMoney(n) {
+    return '₹' + Number(n || 0).toLocaleString('en-IN');
+}
+
+// Populate the villa dropdown once, then load whichever villa is selected.
+async function initCalendar() {
+    var sel = document.getElementById('calVilla');
+    if (sel.dataset.ready === '1') { if (!calState.days.length) loadCalendar(); return; }
+
+    try {
+        var res = await fetch(API + '/properties');
+        var list = await res.json();
+        if (!Array.isArray(list) || !list.length) {
+            sel.innerHTML = '<option value="">No villas yet</option>';
+            return;
+        }
+        // Inactive villas are kept in the list but flagged — an admin still
+        // needs to see existing bookings on a villa they've taken offline.
+        sel.innerHTML = list.map(function(p) {
+            var label = p.name + (p.status && p.status !== 'Active' ? ' (' + p.status + ')' : '');
+            return '<option value="' + calEsc(p._id) + '">' + calEsc(label) + '</option>';
+        }).join('');
+        sel.dataset.ready = '1';
+        calState.villaId = list[0]._id;
+        sel.value = calState.villaId;
+        loadCalendar();
+    } catch (e) {
+        sel.innerHTML = '<option value="">Failed to load villas</option>';
+        calNotice('error', 'Could not load villas: ' + e.message);
+    }
+}
+
+function calShiftMonth(delta) {
+    if (delta === 0) {
+        var now = new Date();
+        calState.year = now.getFullYear();
+        calState.month = now.getMonth();
+    } else {
+        var d = new Date(calState.year, calState.month + delta, 1);
+        calState.year = d.getFullYear();
+        calState.month = d.getMonth();
+    }
+    loadCalendar();
+}
+
+function calNotice(kind, msg) {
+    var el = document.getElementById('calNotice');
+    if (!msg) { el.classList.add('hidden'); return; }
+    var styles = {
+        error: 'bg-red-50 text-red-700 border border-red-200',
+        warn:  'bg-amber-50 text-amber-800 border border-amber-200',
+        info:  'bg-indigo-50 text-indigo-700 border border-indigo-200',
+    };
+    el.className = 'mb-4 text-xs font-semibold rounded-xl px-4 py-3 ' + (styles[kind] || styles.info);
+    el.innerHTML = msg;
+}
+
+function calPad(n) { return String(n).padStart(2, '0'); }
+
+async function loadCalendar() {
+    var sel = document.getElementById('calVilla');
+    calState.villaId = sel.value;
+    calState.villaName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+
+    document.getElementById('calMonthLabel').textContent =
+        CAL_MONTHS[calState.month] + ' ' + calState.year;
+
+    if (!calState.villaId) return;
+
+    var grid = document.getElementById('calGrid');
+    grid.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading calendar…</div>';
+    document.getElementById('calSummary').classList.add('hidden');
+    calNotice(null);
+
+    // Whole month, first to last day.
+    var first = calState.year + '-' + calPad(calState.month + 1) + '-01';
+    var lastDay = new Date(calState.year, calState.month + 1, 0).getDate();
+    var last = calState.year + '-' + calPad(calState.month + 1) + '-' + calPad(lastDay);
+
+    // Guard against a slow response for last month landing after a fast one
+    // for this month and overwriting the grid with stale data.
+    var token = Date.now();
+    calState.loading = token;
+
+    try {
+        var res = await fetch(API + '/properties/' + calState.villaId
+            + '/calendar?from=' + first + '&to=' + last);
+        var data = await res.json();
+        if (calState.loading !== token) return;   // superseded by a newer click
+
+        if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+        calState.days = data.days || [];
+        calState.byDate = {};
+        calState.days.forEach(function(d) { calState.byDate[d.date] = d; });
+
+        if (data.sfDown) {
+            calNotice('warn', '<i class="fa-solid fa-triangle-exclamation"></i> '
+                + 'Stayflexi is unreachable' + (data.sfError ? ' (' + calEsc(data.sfError) + ')' : '')
+                + ' — channel/OTA bookings could not be checked, so those nights show as '
+                + '<strong>Unknown</strong>. Bookings made on this site are still accurate.');
+        } else if (data.unparseableBookings && data.unparseableBookings.length) {
+            calNotice('warn', data.unparseableBookings.length + ' booking(s) on this villa have unreadable '
+                + 'check-in/check-out dates and could not be placed on the calendar: '
+                + calEsc(data.unparseableBookings.map(function(b) {
+                    return b.guestName + (b.bookingRef ? ' (' + b.bookingRef + ')' : '');
+                  }).join(', ')));
+        }
+
+        renderCalendar();
+    } catch (e) {
+        if (calState.loading !== token) return;
+        grid.innerHTML = '<div class="p-8 text-center text-red-500 text-sm font-semibold">'
+            + 'Could not load the calendar — ' + calEsc(e.message) + '</div>';
+    }
+}
+
+function renderCalendar() {
+    var grid = document.getElementById('calGrid');
+    var days = calState.days;
+    if (!days.length) {
+        grid.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm">No days to show.</div>';
+        return;
+    }
+
+    var dowNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var html = '<div class="cal-head">' + dowNames.map(function(d) {
+        return '<div>' + d + '</div>';
+    }).join('') + '</div><div class="cal-body">';
+
+    // Blank cells so the 1st lands under the right weekday
+    for (var i = 0; i < days[0].dow; i++) html += '<div class="cal-cell empty"></div>';
+
+    days.forEach(function(d) {
+        var cls = 'cal-cell cal-s-' + d.status
+            + (d.past ? ' past' : '')
+            + (d.today ? ' today' : '')
+            + ' clickable';
+
+        var tag = '', tagColor = '';
+        if (d.status === 'booked')       { tag = 'Booked';   tagColor = '#b91c1c'; }
+        else if (d.status === 'channel') { tag = 'OTA';      tagColor = '#b45309'; }
+        else if (d.status === 'blocked') { tag = 'Blocked';  tagColor = '#475569'; }
+        else if (d.status === 'unknown') { tag = 'Unknown';  tagColor = '#6d28d9'; }
+
+        var bottom;
+        if (d.status === 'booked' && d.bookings.length) {
+            bottom = '<div class="cal-guest" title="' + calEsc(d.bookings[0].guestName) + '">'
+                + '<i class="fa-solid fa-user text-[8px]"></i> ' + calEsc(d.bookings[0].guestName)
+                + (d.bookings.length > 1 ? ' +' + (d.bookings.length - 1) : '')
+                + '</div>';
+        } else {
+            // The rate is the useful thing on a free night.
+            bottom = '<div class="cal-rate">' + calMoney(d.rate) + '</div>';
+        }
+
+        // A checkout on an otherwise-free day matters: the villa is bookable
+        // but housekeeping still has a turnaround that morning.
+        var co = (d.checkouts && d.checkouts.length && d.status !== 'booked')
+            ? '<span class="text-[8px] font-bold text-gray-500" title="Guest checks out">'
+              + '<i class="fa-solid fa-right-from-bracket"></i></span>'
+            : '';
+
+        html += '<div class="' + cls + '" onclick="openCalDay(\'' + d.date + '\')">'
+            + '<div class="flex items-start justify-between gap-1">'
+            +   '<span class="cal-daynum">' + Number(d.date.slice(8, 10)) + '</span>'
+            +   (tag ? '<span class="cal-tag" style="color:' + tagColor + '">' + tag + '</span>' : co)
+            + '</div>'
+            + bottom
+            + '</div>';
+    });
+
+    html += '</div>';
+    grid.innerHTML = html;
+    renderCalSummary();
+}
+
+function renderCalSummary() {
+    var days = calState.days;
+    var booked = days.filter(function(d) { return d.status === 'booked'; }).length;
+    var channel = days.filter(function(d) { return d.status === 'channel'; }).length;
+    var free = days.filter(function(d) { return d.status === 'available'; }).length;
+
+    // Confirmed revenue only counts our own bookings — an OTA night is sold,
+    // but at the channel's rate, which we don't know from here.
+    var revenue = days.reduce(function(sum, d) {
+        return d.status === 'booked' ? sum + (d.rate || 0) : sum;
+    }, 0);
+
+    var sellable = days.filter(function(d) { return d.status !== 'unknown'; }).length;
+    var occupancy = sellable ? Math.round(((booked + channel) / sellable) * 100) : 0;
+
+    var cards = [
+        ['Nights Booked', booked + (channel ? ' + ' + channel + ' OTA' : ''), 'text-red-600'],
+        ['Nights Free', String(free), 'text-emerald-600'],
+        ['Occupancy', occupancy + '%', 'text-indigo-600'],
+        ['Est. Revenue', calMoney(revenue), 'text-amber-600'],
+    ];
+
+    document.getElementById('calSummary').innerHTML = cards.map(function(c) {
+        return '<div class="stat-card">'
+            + '<div class="text-xs text-gray-400 font-semibold mb-1">' + c[0] + '</div>'
+            + '<div class="text-2xl font-black ' + c[2] + '">' + c[1] + '</div></div>';
+    }).join('');
+    document.getElementById('calSummary').classList.remove('hidden');
+}
+
+// ── Day detail ──
+function openCalDay(date) {
+    var d = calState.byDate[date];
+    if (!d) return;
+
+    var dt = new Date(date + 'T00:00:00');
+    document.getElementById('calDayTitle').textContent =
+        dt.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    document.getElementById('calDaySubtitle').textContent =
+        calState.villaName + ' · ' + calMoney(d.rate) + (d.weekend ? ' (weekend rate)' : ' (weekday rate)');
+
+    var body = '';
+
+    if (d.status === 'booked' && d.bookings.length) {
+        body += d.bookings.map(function(b) { return calBookingCard(b); }).join('');
+    } else if (d.status === 'channel') {
+        body += calStatusBox('#fef3c7', '#b45309',
+            'Booked on a channel / OTA',
+            'Stayflexi reports no rooms left on this date, but there is no matching booking in the '
+            + 'StellarStays database — so this was almost certainly sold through an OTA '
+            + '(Airbnb, Booking.com, MakeMyTrip, etc.) or entered directly in Stayflexi. '
+            + 'Guest details for these live in the Stayflexi dashboard, not here.');
+    } else if (d.status === 'blocked') {
+        body += calStatusBox('#e2e8f0', '#334155',
+            'Blocked by admin',
+            'This date was manually blocked on the property (Blocked Dates). It will not be sold on the '
+            + 'website. Edit the property to unblock it.');
+    } else if (d.status === 'unknown') {
+        body += calStatusBox('#f5f3ff', '#6d28d9',
+            'Availability unknown',
+            'Stayflexi could not be reached, so channel bookings for this date could not be checked. '
+            + 'It is not booked on the StellarStays site, but it may still be sold elsewhere. '
+            + 'Refresh once Stayflexi is back before selling this night.');
+    } else {
+        body += calStatusBox('#ecfdf5', '#047857',
+            'Available — ' + calMoney(d.rate),
+            'Free on the website, free on Stayflexi, and not blocked.');
+    }
+
+    // Checkouts land on a day that is itself bookable, so they're shown
+    // alongside whatever the day's own status is rather than replacing it.
+    if (d.checkouts && d.checkouts.length) {
+        body += '<div class="mt-4"><div class="section-title">Checking Out Today</div>'
+            + d.checkouts.map(function(b) {
+                return '<div class="text-sm font-semibold text-[#0f1f3d]">'
+                    + calEsc(b.guestName) + ' — ' + calEsc(b.bookingRef || '')
+                    + ' <span class="text-xs font-medium text-gray-500">(stay ends this morning; '
+                    + 'the night is bookable)</span></div>';
+              }).join('')
+            + '</div>';
+    }
+
+    document.getElementById('calDayBody').innerHTML = body;
+    document.getElementById('calDayModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function calStatusBox(bg, fg, title, text) {
+    return '<div class="rounded-xl p-4" style="background:' + bg + ';">'
+        + '<div class="font-black text-sm mb-1" style="color:' + fg + '">' + calEsc(title) + '</div>'
+        + '<div class="text-xs font-medium leading-relaxed" style="color:' + fg + '">' + calEsc(text) + '</div>'
+        + '</div>';
+}
+
+function calBookingCard(b) {
+    var guests = (b.adults || 0) + (b.children || 0) + (b.infants || 0);
+    var rows = [
+        ['Booking Ref', calEsc(b.bookingRef || '—')],
+        ['Guest Name', calEsc(b.guestName || '—')],
+        ['Phone', phoneLinks(b.guestPhone)],
+        ['Email', calEsc(b.guestEmail || '—')],
+        ['Check-In', calEsc(b.checkIn || '—')],
+        ['Check-Out', calEsc(b.checkOut || '—')],
+        ['Nights', b.nights != null ? b.nights : '—'],
+        ['Guests', guests ? guests + ' total' : '—'],
+        ['Amount', b.totalAmount ? calMoney(b.totalAmount) : '—'],
+        ['Payment', b.paid ? '<span class="text-emerald-600">Paid</span>'
+                           : '<span class="text-amber-600">Unpaid</span>'],
+        ['Status', calEsc(b.status || '—')],
+        ['Source', calEsc(b.source || 'website')],
+    ];
+    if (b.addons && b.addons.length) rows.push(['Add-ons', calEsc(b.addons.join(', '))]);
+    if (b.createdAt) rows.push(['Booked On', new Date(b.createdAt).toLocaleString('en-IN')]);
+
+    return '<div class="rounded-xl border border-red-200 bg-red-50/40 p-4 mb-3">'
+        + '<div class="grid grid-cols-2 gap-4">'
+        + rows.map(function(r) {
+            return '<div><div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">'
+                + r[0] + '</div><div class="text-sm font-semibold text-[#0f1f3d]">' + r[1] + '</div></div>';
+          }).join('')
+        + '</div></div>';
+}
+
+function closeCalDay() {
+    document.getElementById('calDayModal').classList.add('hidden');
+    document.body.style.overflow = '';
 }
 
 // ── Server health ──
@@ -2014,6 +2413,20 @@ loadProperties();
     </div>
 </div>
 <!-- ═══ DASHBOARD BOOKING DETAILS MODAL ═══ -->
+<!-- ═══ CALENDAR DAY DETAIL MODAL ═══ -->
+<div id="calDayModal" class="modal-overlay hidden">
+    <div class="modal-box-lg" style="max-width:640px;">
+        <div class="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
+            <div>
+                <h2 class="text-lg font-black text-[#0f1f3d]" id="calDayTitle">Day</h2>
+                <div class="text-xs text-gray-500 font-semibold mt-0.5" id="calDaySubtitle"></div>
+            </div>
+            <button onclick="closeCalDay()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="calDayBody" class="p-5"></div>
+    </div>
+</div>
+
 <div id="dashBookingDetailsModal" class="modal-overlay hidden">
     <div class="modal-box-lg" style="max-width:640px;">
         <div class="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
