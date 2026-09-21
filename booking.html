@@ -10,12 +10,16 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <style>
         :root { --brand-navy: #0f1f3d; --brand-amber: #f59e0b; --brand-cream: #fdf8f0; }
-        body { font-family: 'DM Sans', sans-serif; background: #f8f7f4; }
-        h1, h2, h3, .display { font-family: 'Playfair Display', serif; }
+        body { font-family: 'Inter', sans-serif; background: #f8f7f4; }
+        /* Fraunces is a soft, warm display serif — its optical-size axis gives
+           large headline weights real character instead of a scaled-up body
+           face. Slightly negative tracking keeps it feeling tailored at
+           display sizes rather than default-browser loose. */
+        h1, h2, h3, .display { font-family: 'Fraunces', serif; letter-spacing: -0.01em; }
 
         /* Inline photo slider */
         .slider-wrap { position:relative; width:100%; height:100%; overflow:hidden; background:#e5e7eb; }
@@ -92,7 +96,17 @@
         @media (min-width: 1024px) { .mobile-book-bar { display: none; } }
 
         /* Calendar: green = available, red = booked/unavailable. Selection stays
-           brand amber so the chosen range is still obviously distinct from both. */
+           brand amber so the chosen range is still obviously distinct from both.
+
+           IMPORTANT: flatpickr puts the same .flatpickr-disabled class on a day
+           whether it's disabled because it's genuinely booked/blocked OR simply
+           because it falls before minDate:"today". Left alone, that paints every
+           already-passed day this month "Booked" red, which is misleading — a
+           villa with 15 real OTA nights out of 30 looked fully booked for the
+           first three weeks just because those days had gone by. `.day-unavailable`
+           is added in JS (see js/booking.js onDayCreate) only for dates that are
+           actually booked, blocked, or sold on a channel; a day that's merely in
+           the past gets the plain muted look below and nothing more. */
         .flatpickr-day:not(.flatpickr-disabled):not(.prevMonthDay):not(.nextMonthDay) {
             background: #ecfdf5; color: #065f46; border-color: #a7f3d0;
         }
@@ -100,6 +114,9 @@
             background: #a7f3d0; color: #065f46; border-color: #6ee7b7;
         }
         .flatpickr-day.flatpickr-disabled {
+            background: #f8fafc; color: #cbd5e1; border-color: #e2e8f0; text-decoration: none;
+        }
+        .flatpickr-day.flatpickr-disabled.day-unavailable {
             background: #fef2f2; color: #fca5a5; border-color: #fecaca; text-decoration: line-through;
         }
         .flatpickr-day.today { border-color: #f59e0b; }
@@ -313,7 +330,7 @@
                         <div class="p-4 border-b border-gray-100">
                             <div class="flex justify-between items-start">
                                 <div>
-                                    <div class="text-2xl font-black text-[#0f1f3d]" style="font-family:'Playfair Display',serif;">
+                                    <div class="text-2xl font-black text-[#0f1f3d]" style="font-family:'Fraunces',serif; letter-spacing:-0.01em;">
                                         <span id="stickyRatePrint">&#8377;0</span><span class="text-sm font-normal text-gray-400"> / night</span>
                                     </div>
                                 </div>
@@ -1226,7 +1243,7 @@ async function sfOnDatesChange(cin, cout) {
                         // DD-MM-YYYY (Stayflexi's format) which `new Date(...)` cannot parse
                         // reliably, so nights-based math must use these instead.
                         checkinISO: cin, checkoutISO: cout
-                    }).replace(/"/g,'&quot;') + ')" class="w-full mt-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2 rounded-xl transition">Select →</button>'
+                    }).replace(/"/g,'&quot;') + ')" class="w-full mt-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2 rounded-xl transition">Select Room</button>'
                     + '</div>';
             });
         });
@@ -1373,7 +1390,7 @@ async function executeSfBooking() {
         });
         if (bookRes.status === 409) {
             var conflict = await bookRes.json();
-            alert('❌ ' + conflict.message);
+            alert(conflict.message);
             resetBtn();
             return;
         }
