@@ -567,7 +567,7 @@ async function executePaymentGateway() {
 
         if (res.status === 409) {
             const err = await res.json();
-            alert("❌ " + err.message);
+            alert(err.message);
             if (btn) { btn.disabled = false; btn.innerText = 'Confirm & Book'; }
             return;
         }
@@ -582,7 +582,7 @@ async function executePaymentGateway() {
         window.location.href = `confirmation.html?bookingId=${bookingId}`;
 
     } catch (err) {
-        alert("⚠️ Could not save booking: " + err.message + "\n\nPlease ensure the server is running.");
+        alert("Could not save booking: " + err.message + "\n\nPlease ensure the server is running.");
         if (btn) { btn.disabled = false; btn.innerText = 'Confirm & Book'; }
     }
 }
