@@ -790,6 +790,15 @@ function getApiBase() {
     return (p && p !== '5000') ? 'http://' + h + ':5000/api' : '/api';
 }
 
+// Stayflexi returns dates as DD-MM-YYYY; the picker looks days up as YYYY-MM-DD.
+// Normalise any incoming blocked date so the two always match.
+function sfToYMD(s) {
+    s = String(s).trim();
+    var m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);          // DD-MM-YYYY
+    if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+    return s.slice(0, 10);                                      // already YYYY-MM-DD[...]
+}
+
 // Inits (or reinits, once live blocked dates are known) the single Stayflexi
 // date-range picker. Always destroys any existing instance first — this is
 // what prevents the old "stacked calendar" bug from double-initializing the
@@ -801,7 +810,7 @@ function initSfDatePickers(blockedDates) {
     // blockedSet = set of YYYY-MM-DD nights that are already occupied
     // (availableRoomCount === 0 for that night, per the live SF calendar).
     var blockedSet = {};
-    (blockedDates || []).forEach(function(d) { blockedSet[d] = true; });
+    (blockedDates || []).forEach(function(d) { blockedSet[sfToYMD(d)] = true; });
 
     // True if every night from `start` up to (but NOT including) `end` is free.
     // The checkout date itself is never checked here — checking out that
@@ -1085,7 +1094,7 @@ async function loadBookingPage() {
                     calendar = await sfFetch(calendarUrl);
                 }
                 var avail = (calendar.aggregate && calendar.aggregate.availableRoomCount) || [];
-                sfLiveBlockedDates = avail.filter(function(d) { return d.count === 0; }).map(function(d) { return d.date; });
+                sfLiveBlockedDates = avail.filter(function(d) { return Number(d.count) <= 0; }).map(function(d) { return d.date; });
             } catch (e) {
                 // FAIL CLOSED, not open: if we can't verify real availability,
                 // we must NOT let the calendar silently show every date as
