@@ -255,6 +255,18 @@
         #mainNav { transition: background 0.3s, box-shadow 0.3s, border-color 0.3s, backdrop-filter 0.3s; }
         #mainNav.scrolled { background: rgba(255,255,255,0.85) !important; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 1px 0 rgba(15,31,61,0.06), 0 12px 30px -18px rgba(15,31,61,0.18); border-bottom-color: transparent !important; }
 
+        /* Date-range chip shown above the grid when a search is active */
+        .date-scope-chip {
+            display: inline-flex; align-items: center; gap: 7px;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 999px;
+            padding: 5px 12px; font-size: 11px; font-weight: 700; color: #0f1f3d;
+        }
+        .date-scope-chip button {
+            border: none; background: none; cursor: pointer; color: #9ca3af;
+            font-size: 11px; font-weight: 700; padding: 0; line-height: 1;
+        }
+        .date-scope-chip button:hover { color: #8f3b30; }
+
         /* Compact FAQ grid (2-col on desktop, cuts vertical height) */
         .faq-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
         @media (min-width: 768px) { .faq-grid { grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; } }
@@ -370,7 +382,6 @@
 
         <!-- Content -->
         <div class="relative z-10 max-w-5xl mx-auto text-center space-y-5 w-full">
-            <!-- BIG LOGO in hero -->
             <h1 class="text-3xl md:text-4xl lg:text-5xl font-semibold text-white leading-tight tracking-tight" style="text-shadow:0 2px 16px rgba(0,0,0,0.5);">
                 Villas in Lonavala with Private Pools
             </h1>
@@ -459,13 +470,17 @@
 
     <!-- ===================== PROPERTY GRID ===================== -->
     <main class="max-w-7xl mx-auto px-4 md:px-10 py-10 md:py-14 w-full flex-grow">
-        <div class="flex justify-between items-center mb-6">
+        <div class="flex justify-between items-center mb-6 gap-4 flex-wrap">
             <div>
                 <h2 class="text-xl md:text-2xl font-semibold text-[--brand-navy]" id="gridTitle">Featured Villas in Lonavala</h2>
                 <span class="text-xs text-gray-400 font-semibold" id="propertyCount">Gathering collection...</span>
             </div>
-            <div class="hidden md:flex items-center gap-2 text-xs font-bold text-gray-500 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm">
-                <i class="fa-solid fa-sliders text-[#a9834f]"></i> Sort & Filter
+            <div class="flex items-center gap-3">
+                <!-- Shows which nights the grid is scoped to, with a way back out -->
+                <div id="dateScope"></div>
+                <div class="hidden md:flex items-center gap-2 text-xs font-bold text-gray-500 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm">
+                    <i class="fa-solid fa-sliders text-[#a9834f]"></i> Sort & Filter
+                </div>
             </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5" id="propertyGrid">
@@ -760,6 +775,11 @@
                             // sync partner end field
                             const partnerEndId = endId === 'endDateInput' ? 'endDateInputDesktop' : 'endDateInput';
                             if (document.getElementById(partnerEndId)) document.getElementById(partnerEndId).value = endVal;
+
+                            // Both nights are now set — ask the server what's actually free
+                            // straight away, so the grid can never sit on a stale list
+                            // next to a filled-in date range.
+                            if (typeof handleSearch === 'function') handleSearch();
                         } else {
                             document.getElementById(endId).value = "";
                         }
@@ -806,8 +826,27 @@
     <script>
     // ============================================================
     // STELLARSTAYS — FULL APP LOGIC (inlined, no external dep)
+    //
+    // AVAILABILITY MODEL
+    // ------------------
+    // The property document is NOT the source of truth for availability.
+    // When the guest picks a date range, the frontend asks the backend:
+    //
+    //     GET /api/properties/available?checkIn=…&checkOut=…&guests=…
+    //
+    // and renders *only* what comes back. Villas booked for those nights are
+    // never in the response, so they can never be rendered.
+    //
+    // If that call fails, the grid shows an error and a retry — it does NOT
+    // fall back to showing every villa. Failing open here means selling a
+    // night that's already taken.
     // ============================================================
-    let propertiesInventory = [];
+
+    let propertiesInventory = [];   // full Active list, used when no dates are picked
+    let currentResults      = [];   // last set the server confirmed for the chosen dates
+    let activeDateRange     = null; // { checkIn, checkOut } currently in effect, or null
+    let searchToken         = 0;    // guards against out-of-order responses
+    let lastLoadFailed      = false;
 
     // ── API base: works for Live Server (:5500) AND direct (:5000)
     function getApiBase() {
@@ -818,12 +857,33 @@
         return 'https://stellarstays.onrender.com/api';
     }
 
-    // ── Navigate to booking page
+    // ── Reads whichever search inputs are visible (mobile vs desktop) right now
+    function getActiveSearchState() {
+        const isMobile = window.innerWidth < 768;
+        const val = (mobileId, desktopId) => {
+            const el = document.getElementById(isMobile ? mobileId : desktopId)
+                    || document.getElementById(mobileId)
+                    || document.getElementById(desktopId);
+            return el ? el.value : '';
+        };
+        return {
+            text:     (val('searchLocation', 'searchLocationDesktop') || '').toLowerCase().trim(),
+            guests:   parseInt(val('searchGuests', 'searchGuestsDesktop'), 10) || 1,
+            checkIn:  val('startDateInput', 'startDateInputDesktop') || '',
+            checkOut: val('endDateInput', 'endDateInputDesktop') || ''
+        };
+    }
+
+    function hasDatesSelected() {
+        const { checkIn, checkOut } = getActiveSearchState();
+        return Boolean(checkIn && checkOut);
+    }
+
+    // ── Navigate to booking page, carrying whichever dates are actually on screen
     function goToBooking(id) {
-        const checkIn  = document.getElementById('startDateInput').value  || '';
-        const checkOut = document.getElementById('endDateInput').value    || '';
-        const guests   = document.getElementById('searchGuests').value    || '1';
-        window.location.href = `booking.html?id=${id}&checkIn=${checkIn}&checkOut=${checkOut}&adults=${guests}`;
+        const { checkIn, checkOut, guests } = getActiveSearchState();
+        window.location.href =
+            `booking.html?id=${id}&checkIn=${checkIn}&checkOut=${checkOut}&adults=${guests}`;
     }
 
     // ── Cloudinary URL optimizer
@@ -832,25 +892,111 @@
         return url.replace('/upload/', '/upload/w_' + w + ',h_' + h + ',c_fill,q_auto,f_auto/');
     }
 
+    // ── The one place that talks to the server about what's bookable.
+    //    With dates  -> availability endpoint (server filters out booked villas)
+    //    Without     -> plain property list
+    async function fetchProperties({ checkIn, checkOut, guests }) {
+        const API = getApiBase();
+        const url = (checkIn && checkOut)
+            ? `${API}/properties/available?checkIn=${encodeURIComponent(checkIn)}`
+              + `&checkOut=${encodeURIComponent(checkOut)}`
+              + (guests ? `&guests=${encodeURIComponent(guests)}` : '')
+            : `${API}/properties`;
+
+        const res = await fetch(url);
+        if (!res.ok) {
+            let detail = `HTTP ${res.status}`;
+            try {
+                const body = await res.json();
+                if (body && body.error) detail = body.error;
+            } catch (_) { /* non-JSON error body */ }
+            throw new Error(detail);
+        }
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error('Unexpected response from server');
+        return data.filter(p => !p.status || p.status === 'Active');
+    }
+
+    // ── The list the grid should currently be drawing from
+    function activeSource() {
+        return activeDateRange ? currentResults : propertiesInventory;
+    }
+
+    // ── Date scope chip above the grid
+    function renderDateScope() {
+        const el = document.getElementById('dateScope');
+        if (!el) return;
+        if (!activeDateRange) { el.innerHTML = ''; return; }
+        el.innerHTML = `
+            <span class="date-scope-chip">
+                <i class="fa-regular fa-calendar" style="color:#a9834f; font-size:11px;"></i>
+                ${activeDateRange.checkIn} → ${activeDateRange.checkOut}
+                <button onclick="clearDates()" title="Clear dates">Clear</button>
+            </span>`;
+    }
+
+    // ── Drop the date filter and go back to the full list
+    function clearDates() {
+        ['startDateInput','endDateInput','startDateInputDesktop','endDateInputDesktop'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (el._flatpickr) el._flatpickr.clear();
+            el.value = '';
+        });
+        activeDateRange = null;
+        currentResults  = [];
+        renderDateScope();
+        document.getElementById('gridTitle').innerText = 'Featured Properties';
+        if (lastLoadFailed) { loadProperties(); return; }
+        renderProperties(propertiesInventory);
+    }
+
+    // ── Grid states
+    function showGridLoading(message) {
+        document.getElementById('propertyGrid').innerHTML =
+            `<div class="col-span-full text-center py-16 text-gray-400 font-medium animate-pulse">${message}</div>`;
+        document.getElementById('propertyCount').innerText = 'Checking…';
+    }
+
+    function showGridError(message, retryFn) {
+        document.getElementById('propertyGrid').innerHTML = `
+            <div class="col-span-full text-center py-16 space-y-3">
+                <i class="fa-regular fa-circle-xmark text-4xl text-red-300 block"></i>
+                <p class="text-red-500 font-semibold">${message}</p>
+                <p class="text-gray-400 text-xs max-w-xs mx-auto">Availability couldn't be confirmed, so no villas are shown. Try again in a moment.</p>
+                <button onclick="${retryFn}" class="mt-2 text-xs font-bold text-indigo-600 underline">
+                    <i class="fa-solid fa-rotate-right" style="font-size:10px;"></i> Try again
+                </button>
+            </div>`;
+        document.getElementById('propertyCount').innerText = '—';
+    }
+
     // ── Render property cards
     function renderProperties(properties) {
         const grid  = document.getElementById('propertyGrid');
         const count = document.getElementById('propertyCount');
         grid.innerHTML = '';
-        count.innerText = `${properties.length} ${properties.length === 1 ? 'space' : 'spaces'} available`;
+        count.innerText = `${properties.length} ${properties.length === 1 ? 'villa' : 'villas'} available`;
 
         if (properties.length === 0) {
-            grid.innerHTML = `
-                <div class="col-span-full text-center py-16">
-                    <i class="fa-regular fa-folder-open text-4xl text-gray-300 mb-3 block"></i>
-                    <p class="text-gray-500 font-semibold text-sm">No properties found for this selection.</p>
-                    <button onclick="filterByLocation('all')" class="mt-4 text-xs font-bold text-indigo-700 underline">View all stays</button>
-                </div>`;
+            grid.innerHTML = activeDateRange
+                ? `<div class="col-span-full text-center py-16 space-y-3">
+                        <i class="fa-regular fa-calendar-xmark text-4xl text-gray-300 block"></i>
+                        <p class="text-gray-600 font-semibold text-sm">Nothing free for ${activeDateRange.checkIn} → ${activeDateRange.checkOut}</p>
+                        <p class="text-gray-400 text-xs max-w-xs mx-auto">Every villa is booked for those nights. Try different dates, or message us on WhatsApp and we'll find you something.</p>
+                        <div class="flex items-center justify-center gap-4 pt-1">
+                            <button onclick="clearDates()" class="text-xs font-bold text-indigo-700 underline">Show all dates</button>
+                            <a href="https://wa.me/918655444465" target="_blank" rel="noopener" class="text-xs font-bold text-emerald-600 underline">Ask on WhatsApp</a>
+                        </div>
+                   </div>`
+                : `<div class="col-span-full text-center py-16">
+                        <i class="fa-regular fa-folder-open text-4xl text-gray-300 mb-3 block"></i>
+                        <p class="text-gray-500 font-semibold text-sm">No properties found for this selection.</p>
+                        <button onclick="filterByLocation('all')" class="mt-4 text-xs font-bold text-indigo-700 underline">View all stays</button>
+                   </div>`;
             return;
         }
 
-        // ── FIX: lazyObs defined ONCE here, at renderProperties scope,
-        //         so it is visible both inside the forEach and after it.
         const lazyObs = ('IntersectionObserver' in window)
             ? new IntersectionObserver(function(entries) {
                 entries.forEach(function(e) {
@@ -904,7 +1050,7 @@
         };
 
         properties.forEach((item, idx) => {
-            // Smart chip selection: pick the 3 most differentiating amenities
+            // Smart chip selection: pick the most differentiating amenities
             const PRIORITY = ['Private Chef','Hot Tub','Bathtub','Kids Pool','Pool Table','Projector','TT Table','Garden','Meals','Pool','WiFi','Kitchen','Parking'];
             const rawAmenities = (item.amenities && item.amenities.length > 0) ? item.amenities : ['Pool','WiFi','Kitchen'];
             const sortedAmenities = [...rawAmenities].sort((a, b) => {
@@ -924,10 +1070,6 @@
             const guestMax = item.guests || 0;
             const guestLabel = guestMax ? `${guestMin}–${guestMax} Guests` : 'Guests';
 
-            const isSignature = item.isSignature || (price >= 20000);
-            const isEscape    = item.isEscape    || (!isSignature);
-            const isNew       = item.isNew       || false;
-
             const offerBadge = item.offer
                 ? `<span class="offer-badge"><i class="fa-solid fa-tag" style="font-size:9px;"></i>${item.offer}</span>`
                 : (item.hot ? `<span class="offer-badge" style="border-color:#8f3b30; color:#8f3b30; background:transparent;">Hot Price</span>` : '');
@@ -944,9 +1086,8 @@
                 const optSrc = optimizeCldUrl(src, 600, 560);
                 if (i === 0) {
                     return `<img src="${optSrc}" alt="${item.name || 'Property'} — private pool villa in ${city || 'Lonavala'}" class="card-img w-full h-full object-cover active-img" onerror="this.src='${fallbackImg}'">`;
-                } else {
-                    return `<img src="" data-src="${optSrc}" alt="${item.name || 'Property'} — private pool villa in ${city || 'Lonavala'}" class="card-img w-full h-full object-cover lazy-card-img" onerror="this.src='${fallbackImg}'">`;
                 }
+                return `<img src="" data-src="${optSrc}" alt="${item.name || 'Property'} — private pool villa in ${city || 'Lonavala'}" class="card-img w-full h-full object-cover lazy-card-img" onerror="this.src='${fallbackImg}'">`;
             }).join('');
 
             const cardId = `card-${idx}`;
@@ -963,7 +1104,6 @@
                         <div class="relative overflow-hidden bg-gray-200 card-img-zone rounded-[13px]" data-card-id="${cardId}" data-count="${imgsArr.length}" style="aspect-ratio:16/12;">
                             <div class="card-img-stack">${imgStack}</div>
 
-                            <!-- Subtle bottom-only gradient, just enough to seat the dots -->
                             <div class="absolute inset-0 z-10" style="background:linear-gradient(to top, rgba(8,16,38,0.35) 0%, transparent 30%);"></div>
 
                             <!-- Wishlist + Share — top right -->
@@ -986,7 +1126,6 @@
                     <!-- ── CARD BODY ── -->
                     <div class="px-4 sm:px-5 pt-4 pb-5 flex-1 flex flex-col gap-3">
 
-                        <!-- Rating + Direct, off the photo -->
                         <div class="flex items-center justify-between">
                             <span class="flex items-center gap-1.5 text-[11px] font-bold" style="color:#b45309;">
                                 <i class="fa-solid fa-star" style="font-size:10px;"></i>
@@ -998,7 +1137,6 @@
                             </span>
                         </div>
 
-                        <!-- Name + location, serif -->
                         <div>
                             <h4 class="display font-bold text-[17px] sm:text-[19px] leading-snug line-clamp-2 tracking-tight" style="color:#0f1f3d;">${item.name || 'Boutique Stay'}</h4>
                             <p class="text-gray-500 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 mt-1">
@@ -1007,10 +1145,8 @@
                             </p>
                         </div>
 
-                        <!-- Gold hairline -->
                         <div style="height:1px; background:linear-gradient(90deg, #a9834f, rgba(169,131,79,0.15) 40%, transparent);"></div>
 
-                        <!-- Guests / BHK / Type — minimal, dot-separated -->
                         <div class="flex items-center gap-2 text-[11px] text-gray-500 font-semibold flex-wrap">
                             <span class="flex items-center gap-1.5">
                                 <i class="fa-solid fa-users" style="font-size:9px; color:#9ca3af;"></i> ${guestLabel}
@@ -1025,7 +1161,6 @@
                             </span>
                         </div>
 
-                        <!-- Amenities — quiet, icon-led, no chip fills -->
                         <div class="flex flex-wrap gap-x-3 gap-y-1.5">
                             ${amenities.map(a => {
                                 const [icon] = amenityIcons[a] || ['fa-circle-check', '#6b7280'];
@@ -1033,13 +1168,10 @@
                             }).join('')}
                         </div>
 
-                        <!-- Offer badge -->
                         ${offerBadge ? `<div>${offerBadge}</div>` : ''}
 
-                        <!-- Divider -->
                         <div class="mt-auto" style="height:1px; background:rgba(15,31,61,0.08);"></div>
 
-                        <!-- Price + CTA -->
                         <div class="flex items-center justify-between gap-3 flex-wrap pt-1">
                             <div class="min-w-0">
                                 <span class="block text-[9px] font-semibold uppercase tracking-wider text-gray-400 mb-0.5">Starting from</span>
@@ -1056,7 +1188,6 @@
                 </div>`;
         }); // end forEach
 
-        // ── Attach lazy observer — lazyObs is in scope here now
         if (lazyObs) {
             document.querySelectorAll('img.lazy-card-img[data-src]').forEach(function(img) {
                 lazyObs.observe(img);
@@ -1102,8 +1233,7 @@
         const cls = 'location-btn shrink-0 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition whitespace-nowrap';
 
         // If there's only one destination live on the site, default straight into it
-        // instead of the generic "All" pill — one less click, and it matches what's
-        // actually there. Falls back to "All" automatically once a 2nd city is added.
+        // instead of the generic "All" pill. Falls back to "All" once a 2nd city exists.
         const defaultLocation = locations.length === 1 ? locations[0] : 'all';
 
         container.innerHTML =
@@ -1117,29 +1247,9 @@
         }
     }
 
-    // ── Reads whichever search inputs are visible (mobile vs desktop) right now
-    function getActiveSearchState() {
-        const isMobile = window.innerWidth < 768;
-        const text = (isMobile
-            ? document.getElementById('searchLocation')
-            : document.getElementById('searchLocationDesktop')
-        ).value.toLowerCase().trim();
-        const guests = parseInt((isMobile
-            ? document.getElementById('searchGuests')
-            : document.getElementById('searchGuestsDesktop')
-        ).value) || 1;
-        const checkIn = (isMobile
-            ? document.getElementById('startDateInput')
-            : document.getElementById('startDateInputDesktop')
-        ).value || '';
-        const checkOut = (isMobile
-            ? document.getElementById('endDateInput')
-            : document.getElementById('endDateInputDesktop')
-        ).value || '';
-        return { text, guests, checkIn, checkOut };
-    }
-
-    // ── Location filter
+    // ── Location filter — narrows the CURRENT result set.
+    //    When dates are in effect that set is the server's availability answer,
+    //    so switching pills can never resurface a booked villa.
     function filterByLocation(location) {
         document.querySelectorAll('.location-btn').forEach(btn => {
             const t = btn.innerText.replace(/[^a-zA-Z\s]/g, '').trim().toLowerCase();
@@ -1147,136 +1257,100 @@
             btn.className = (active ? 'location-btn loc-btn-active' : 'location-btn loc-btn-inactive') +
                 ' shrink-0 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition whitespace-nowrap';
         });
+
         document.getElementById('gridTitle').innerText = location === 'all'
             ? 'Featured Properties' : `Premium Stays in ${location}`;
 
-        // Keep whatever dates/guests are currently selected in effect when switching
-        // location pills, so a date-filtered view doesn't silently reset.
-        const { guests, checkIn, checkOut } = getActiveSearchState();
-        const byLocation = location === 'all'
-            ? propertiesInventory
-            : propertiesInventory.filter(p => p.location && p.location.toLowerCase() === location.toLowerCase());
-
-        renderProperties(byLocation.filter(p => (p.guests || 0) >= guests && isAvailable(p, checkIn, checkOut)));
+        const source = activeSource();
+        renderProperties(location === 'all'
+            ? source
+            : source.filter(p => p.location && p.location.toLowerCase() === location.toLowerCase()));
     }
 
-    // ── Normalize a property's "unavailable" nights into date ranges, no matter which
-    //    field/shape the API uses for it. Checks several common names/shapes so this
-    //    keeps working even if the backend doesn't use the exact field the homepage
-    //    originally assumed (blockedDates).
-    function getBookedRanges(property) {
-        const ranges = [];
-
-        // Shape A: a flat array of blocked/booked "night" date strings
-        const nightArrays = [
-            property.blockedDates,
-            property.bookedDates,
-            property.unavailableDates,
-            property.disabledDates,
-            property.calendar && property.calendar.blockedDates,
-            property.availability && property.availability.blockedDates
-        ];
-        nightArrays.forEach(arr => {
-            if (!Array.isArray(arr)) return;
-            arr.forEach(dateStr => {
-                if (!dateStr) return;
-                const d = new Date(dateStr);
-                if (!isNaN(d)) ranges.push({ start: d, end: new Date(d.getTime() + 86400000) });
-            });
-        });
-
-        // Shape B: an array of booking/reservation objects with a date range
-        const bookingArrays = [property.bookings, property.reservations, property.blockedRanges];
-        bookingArrays.forEach(arr => {
-            if (!Array.isArray(arr)) return;
-            arr.forEach(b => {
-                if (!b) return;
-                const s = b.checkIn || b.startDate || b.from || b.start;
-                const e = b.checkOut || b.endDate || b.to || b.end;
-                if (!s || !e) return;
-                const start = new Date(s), end = new Date(e);
-                if (!isNaN(start) && !isNaN(end)) ranges.push({ start, end });
-            });
-        });
-
-        return ranges;
-    }
-
-    // ── Does [checkIn, checkOut) overlap any of a property's booked/blocked ranges?
-    function isAvailable(property, checkIn, checkOut) {
-        if (!checkIn || !checkOut) return true; // no dates picked -> don't filter by availability
-        const ranges = getBookedRanges(property);
-        if (ranges.length === 0) return true;
-
-        const start = new Date(checkIn);
-        const end   = new Date(checkOut);
-
-        return !ranges.some(r => start < r.end && end > r.start);
-    }
-
-    // ── Search — reads from whichever layout is active (mobile or desktop)
-    function handleSearch() {
+    // ── Search — server decides availability, frontend only renders the answer
+    async function handleSearch() {
         const { text, guests, checkIn, checkOut } = getActiveSearchState();
+        const token = ++searchToken;
 
-        const filtered = propertiesInventory.filter(p =>
-            (!text || (p.location||'').toLowerCase().includes(text) || (p.name||'').toLowerCase().includes(text)) &&
-            (p.guests || 0) >= guests &&
-            isAvailable(p, checkIn, checkOut)
-        );
+        // Guard: one date without the other can't be checked
+        if ((checkIn && !checkOut) || (!checkIn && checkOut)) {
+            document.getElementById('gridTitle').innerText = 'Pick both dates';
+            document.getElementById('propertyGrid').innerHTML = `
+                <div class="col-span-full text-center py-16 space-y-2">
+                    <i class="fa-regular fa-calendar text-4xl text-gray-300 block"></i>
+                    <p class="text-gray-600 font-semibold text-sm">Add a check-out date</p>
+                    <p class="text-gray-400 text-xs">We need both nights to check what's free.</p>
+                </div>`;
+            document.getElementById('propertyCount').innerText = '—';
+            return;
+        }
 
-        document.getElementById('gridTitle').innerText = text ? `Results for "${text}"` : 'Search Results';
-        renderProperties(filtered);
-        // Scroll down to results
+        showGridLoading(checkIn ? 'Checking availability…' : 'Assembling your dream spaces…');
+
+        try {
+            const results = await fetchProperties({ checkIn, checkOut, guests });
+            if (token !== searchToken) return; // a newer search already fired
+
+            lastLoadFailed = false;
+
+            if (checkIn && checkOut) {
+                activeDateRange = { checkIn, checkOut };
+                currentResults  = results;
+            } else {
+                activeDateRange     = null;
+                propertiesInventory = results;
+                currentResults      = [];
+            }
+            renderDateScope();
+
+            const visible = results.filter(p =>
+                !text ||
+                (p.location || '').toLowerCase().includes(text) ||
+                (p.name || '').toLowerCase().includes(text)
+            );
+
+            document.getElementById('gridTitle').innerText =
+                text ? `Results for "${text}"`
+                     : (activeDateRange ? `Available ${checkIn} → ${checkOut}` : 'Search Results');
+
+            renderProperties(visible);
+        } catch (err) {
+            if (token !== searchToken) return;
+            console.error('[StellarStays] Availability error:', err);
+            lastLoadFailed  = true;
+            currentResults  = [];
+            activeDateRange = (checkIn && checkOut) ? { checkIn, checkOut } : null;
+            renderDateScope();
+            showGridError("Couldn't check availability", 'handleSearch()');
+        }
+
         document.getElementById('destinations')?.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // ── Load from API
+    // ── Initial load (no dates yet): plain property list
     async function loadProperties() {
-        const API  = getApiBase();
-        const grid  = document.getElementById('propertyGrid');
-        const count = document.getElementById('propertyCount');
-
-        console.log('[StellarStays] API base:', API);
-        grid.innerHTML  = `<div class="col-span-full text-center py-16 text-gray-400 font-medium animate-pulse">Assembling your dream spaces…</div>`;
-        count.innerText = 'Loading…';
+        const token = ++searchToken;
+        showGridLoading('Assembling your dream spaces…');
 
         try {
-            const res = await fetch(`${API}/properties`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-            const all = await res.json();
-            console.log('[StellarStays] Total from DB:', all.length);
+            const all = await fetchProperties({ checkIn: '', checkOut: '', guests: 0 });
+            if (token !== searchToken) return;
 
-            propertiesInventory = all.filter(p => !p.status || p.status === 'Active');
-            console.log('[StellarStays] Active:', propertiesInventory.length);
+            lastLoadFailed      = false;
+            propertiesInventory = all;
+            currentResults      = [];
+            activeDateRange     = null;
+            renderDateScope();
 
-            // ── Diagnostics: show exactly what one property looks like, so it's easy
-            // to confirm (or correct) which field the availability check should read.
-            if (propertiesInventory[0]) {
-                console.log('[StellarStays] Sample property fields:', Object.keys(propertiesInventory[0]));
-                console.log('[StellarStays] Sample property:', propertiesInventory[0]);
-            }
-            const withKnownAvailability = propertiesInventory.filter(p => getBookedRanges(p).length > 0);
-            console.log(`[StellarStays] Properties with recognizable booked/blocked dates: ${withKnownAvailability.length} of ${propertiesInventory.length}`);
-            if (withKnownAvailability.length === 0) {
-                console.warn('[StellarStays] No property has a recognizable availability field (checked blockedDates, bookedDates, unavailableDates, disabledDates, bookings, reservations, blockedRanges). Date-based search filtering will show everyone as available until the real field name is confirmed — check "Sample property" above.');
-            }
+            console.log('[StellarStays] Active properties:', propertiesInventory.length);
 
             buildLocationPills(propertiesInventory);
             renderProperties(propertiesInventory);
         } catch (err) {
+            if (token !== searchToken) return;
             console.error('[StellarStays] Fetch error:', err);
-            grid.innerHTML = `
-                <div class="col-span-full text-center py-16 space-y-3">
-                    <i class="fa-regular fa-circle-xmark text-4xl text-red-300 block"></i>
-                    <p class="text-red-500 font-semibold">Could not load properties</p>
-                    <p class="text-gray-400 text-xs max-w-xs mx-auto">
-                        Error: <strong>${err.message}</strong><br><br>
-                        Make sure your Node server is running:<br>
-                        <code class="bg-gray-100 px-2 py-0.5 rounded font-mono text-xs">node server.js</code>
-                    </p>
-                    <button onclick="loadProperties()" class="mt-2 text-xs font-bold text-indigo-600 underline"><i class="fa-solid fa-rotate-right" style="font-size:10px;"></i> Retry</button>
-                </div>`;
-            count.innerText = '0 spaces available';
+            lastLoadFailed = true;
+            showGridError('Could not load properties', 'loadProperties()');
             const pills = document.getElementById('locationPills');
             if (pills) pills.innerHTML = '';
         }
