@@ -1100,11 +1100,21 @@
         if (!container) return;
         const locations = [...new Set(properties.map(p => p.location).filter(Boolean))].sort();
         const cls = 'location-btn shrink-0 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition whitespace-nowrap';
+
+        // If there's only one destination live on the site, default straight into it
+        // instead of the generic "All" pill — one less click, and it matches what's
+        // actually there. Falls back to "All" automatically once a 2nd city is added.
+        const defaultLocation = locations.length === 1 ? locations[0] : 'all';
+
         container.innerHTML =
-            `<button onclick="filterByLocation('all')" class="${cls} loc-btn-active">All</button>` +
+            `<button onclick="filterByLocation('all')" class="${cls} ${defaultLocation === 'all' ? 'loc-btn-active' : 'loc-btn-inactive'}">All</button>` +
             locations.map(l =>
-                `<button onclick="filterByLocation('${l}')" class="${cls} loc-btn-inactive">${l}</button>`
+                `<button onclick="filterByLocation('${l}')" class="${cls} ${defaultLocation === l ? 'loc-btn-active' : 'loc-btn-inactive'}">${l}</button>`
             ).join('');
+
+        if (defaultLocation !== 'all') {
+            document.getElementById('gridTitle').innerText = `Premium Stays in ${defaultLocation}`;
+        }
     }
 
     // ── Location filter
