@@ -41,6 +41,25 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 function fmtSfDate(d) { return pad2(d.getDate()) + '-' + pad2(d.getMonth() + 1) + '-' + d.getFullYear(); }
 function fmtSfDateTime(d, time) { return fmtSfDate(d) + ' ' + time; }
 
+// ── Date parsing (mirrors backend/utils/dates.js parseBookingDate) ──
+// Booking.checkIn/checkOut can be "DD-MM-YYYY HH:MM:SS" (written by this very
+// file via fmtSfDate) or ISO "YYYY-MM-DD...". Stayflexi's calendar also
+// returns DD-MM-YYYY. `new Date("05-10-2026")` is ambiguous across browsers —
+// this is the one place both formats get parsed correctly, so the calendar's
+// "is this date really booked" check never silently misreads a date.
+function parseAnyDate(str) {
+    if (!str) return null;
+    str = String(str).trim();
+    const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3], +(iso[4] || 0), +(iso[5] || 0), +(iso[6] || 0));
+    const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (dmy) return new Date(+dmy[3], +dmy[2] - 1, +dmy[1], +(dmy[4] || 0), +(dmy[5] || 0), +(dmy[6] || 0));
+    const fallback = new Date(str);
+    return isNaN(fallback.getTime()) ? null : fallback;
+}
+function ymdLocal(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function startOfDayLocal(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
 // ==========================================
 // INIT
 // ==========================================
@@ -160,7 +179,26 @@ async function parseUrlAndPopulate() {
     }
 
     // ── Fetch booked date ranges + admin-blocked dates to disable in calendar ──
+    // `disabledRanges` feeds flatpickr's `disable` option (unchanged — this is
+    // what actually stops a guest selecting the date). `reallyUnavailable` is a
+    // parallel set of the same nights, used only to decide *how a day is
+    // painted*: flatpickr also auto-disables every day before minDate:"today",
+    // and without this set that CSS can't tell "already passed" from
+    // "genuinely booked" — see the styling fix at the flatpickr init below.
     let disabledRanges = [];
+    const reallyUnavailable = new Set();
+
+    function addUnavailableRange(fromStr, toDate) {
+        const from = startOfDayLocal(parseAnyDate(fromStr) || new Date(fromStr));
+        const to   = startOfDayLocal(toDate);
+        if (isNaN(from.getTime()) || isNaN(to.getTime())) return;
+        const cursor = new Date(from);
+        while (cursor <= to) {
+            reallyUnavailable.add(ymdLocal(cursor));
+            cursor.setDate(cursor.getDate() + 1);
+        }
+    }
+
     try {
         const bRes = await fetch(`${getApiBase()}/bookings`);
         if (bRes.ok) {
@@ -175,8 +213,13 @@ async function parseUrlAndPopulate() {
                     // The checkOut date itself must stay selectable (guest leaves by
                     // 10 AM, next guest can check in same day from 1 PM), so we
                     // disable up to the day before checkOut, not checkOut itself.
-                    const toDate = new Date(b.checkOut);
+                    // Parsed with parseAnyDate() rather than `new Date(...)` since
+                    // checkOut can be in "DD-MM-YYYY HH:MM:SS" form, which the
+                    // native Date constructor does not reliably understand.
+                    const parsedOut = parseAnyDate(b.checkOut) || new Date(b.checkOut);
+                    const toDate = new Date(parsedOut);
                     toDate.setDate(toDate.getDate() - 1);
+                    addUnavailableRange(b.checkIn, toDate);
                     return { from: b.checkIn, to: toDate };
                 });
             disabledRanges.push(...bookedRanges);
@@ -188,6 +231,10 @@ async function parseUrlAndPopulate() {
     // Also disable admin-blocked individual dates
     if (activeVilla.blockedDates && activeVilla.blockedDates.length) {
         disabledRanges.push(...activeVilla.blockedDates);
+        activeVilla.blockedDates.forEach(d => {
+            const parsed = parseAnyDate(d);
+            if (parsed) reallyUnavailable.add(ymdLocal(parsed));
+        });
     }
 
     // ── Live Stayflexi sync (only for SF-linked properties) ──
@@ -215,6 +262,12 @@ async function parseUrlAndPopulate() {
             const avail = (calendar.aggregate && calendar.aggregate.availableRoomCount) || [];
             const sfBlocked = avail.filter(d => d.count === 0).map(d => d.date);
             disabledRanges.push(...sfBlocked);
+            // sfBlocked dates come back as DD-MM-YYYY (Stayflexi's own format) —
+            // parseAnyDate() handles that, `new Date(...)` would not.
+            sfBlocked.forEach(d => {
+                const parsed = parseAnyDate(d);
+                if (parsed) reallyUnavailable.add(ymdLocal(parsed));
+            });
         } catch (e) {
             console.warn('SF calendar fetch failed, using stored blocked dates only:', e.message);
         }
@@ -227,7 +280,18 @@ async function parseUrlAndPopulate() {
         dateFormat: "d M Y",
         defaultDate: (checkInStr && checkOutStr) ? [checkInStr, checkOutStr] : null,
         disable: disabledRanges,
-        onChange: function(dates) { processStayDuration(dates); }
+        onChange: function(dates) { processStayDuration(dates); },
+        // flatpickr applies the same .flatpickr-disabled class to a day whether
+        // it's disabled for being genuinely booked OR simply for falling before
+        // minDate:"today" — CSS alone can't tell those apart, which is what made
+        // every already-passed day this month look "Booked" red. Tag the ones
+        // that are actually unavailable so CSS can paint only those red; a day
+        // that's merely in the past gets the plain muted "disabled" look.
+        onDayCreate: function(dObj, dStr, fp, dayElem) {
+            if (reallyUnavailable.has(ymdLocal(dayElem.dateObj))) {
+                dayElem.classList.add('day-unavailable');
+            }
+        }
     });
 
     if (checkInStr && checkOutStr) {
