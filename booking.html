@@ -799,6 +799,52 @@ function sfToYMD(s) {
     return s.slice(0, 10);                                      // already YYYY-MM-DD[...]
 }
 
+// ── Same-day check-in cutoff ─────────────────────────────────────────────
+// Stayflexi's hotelcalendar only reports inventory, so today looks "available"
+// even after the property's check-in time has passed — but hoteldetailadvanced
+// returns no rooms for a check-in that's already gone. Without this, the picker
+// happily offers today (green) and then the room lookup says "Not available".
+// All comparisons use IST, the property's timezone, not the visitor's clock.
+var SF_TZ = 'Asia/Kolkata';
+var sfCheckinCutoff = { h: 14, m: 0 };   // fallback; overwritten from hotelcheckin
+
+function sfNowIST() {
+    var p = {};
+    new Intl.DateTimeFormat('en-GB', {
+        timeZone: SF_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).formatToParts(new Date()).forEach(function(x) { p[x.type] = x.value; });
+    return { y: +p.year, mo: +p.month, d: +p.day, h: +p.hour, mi: +p.minute };
+}
+
+function sfSameDayClosed() {
+    var n = sfNowIST();
+    return (n.h * 60 + n.mi) >= (sfCheckinCutoff.h * 60 + sfCheckinCutoff.m);
+}
+
+// Earliest selectable check-in: today until the check-in time passes, then tomorrow.
+function sfEarliestCheckIn() {
+    var n = sfNowIST();
+    return new Date(n.y, n.mo - 1, n.d + (sfSameDayClosed() ? 1 : 0));
+}
+
+// True if `ymd` is today (IST) and today's check-in window has closed.
+function sfIsClosedSameDay(ymd) {
+    var n = sfNowIST();
+    var today = n.y + '-' + String(n.mo).padStart(2, '0') + '-' + String(n.d).padStart(2, '0');
+    return ymd === today && sfSameDayClosed();
+}
+
+async function sfLoadSameDayCutoff(hotelId) {
+    try {
+        var n = sfNowIST();
+        var today = String(n.d).padStart(2, '0') + '-' + String(n.mo).padStart(2, '0') + '-' + n.y;
+        var ciT = await sfFetch('/core/api/v1/beservice/hotelcheckin/?hotelId=' + hotelId + '&date=' + today);
+        var t = sfTimeTo24(ciT.afternoon || ciT.morning || ciT.night || '2 PM', '2 PM').split(':');
+        sfCheckinCutoff = { h: +t[0], m: +t[1] };
+    } catch (e) { /* keep fallback cutoff */ }
+}
+
 // Inits (or reinits, once live blocked dates are known) the single Stayflexi
 // date-range picker. Always destroys any existing instance first — this is
 // what prevents the old "stacked calendar" bug from double-initializing the
@@ -828,7 +874,7 @@ function initSfDatePickers(blockedDates) {
     }
 
     var cfg = {
-        mode: 'range', minDate: 'today', dateFormat: 'Y-m-d',
+        mode: 'range', minDate: sfEarliestCheckIn(), dateFormat: 'Y-m-d',
         // Function-based disable so behavior differs for picking a check-in
         // (no date selected yet) vs. picking a checkout (one date selected).
         // This is what makes same-day turnover and 1-night stays work: a
@@ -1036,6 +1082,12 @@ async function loadBookingPage() {
 
             // Init the date picker — see initSfDatePickers() below. Reinitialized
             // again once live blocked dates come back from Stayflexi.
+            await sfLoadSameDayCutoff(sfHotelId);
+            // A ?checkIn= of today that's already past check-in time can't be booked
+            if (checkIn && checkIn < toLocalYMD(sfEarliestCheckIn())) {
+                checkIn = ''; checkOut = '';
+                updateAvailabilityBanner();
+            }
             initSfDatePickers([]);
             // Pre-fill if URL had dates — kicks off the availability/room lookup
             // immediately, ahead of the blocked-dates reinit below.
@@ -1217,8 +1269,8 @@ async function sfOnDatesChange(cin, cout) {
             document.getElementById('sfRoomList').innerHTML =
                 '<div class="text-center py-6">'
                 + '<i class="fa-solid fa-calendar-xmark text-2xl text-red-300 mb-2"></i>'
-                + '<div class="text-sm font-bold text-red-500">These dates aren\'t available.</div>'
-                + '<div class="text-xs text-gray-400 mt-1">Please select different dates and try again.</div>'
+                + '<div class="text-sm font-bold text-red-500">' + (sfIsClosedSameDay(cin) ? 'Same-day check-in is closed.' : 'These dates aren\'t available.') + '</div>'
+                + '<div class="text-xs text-gray-400 mt-1">' + (sfIsClosedSameDay(cin) ? 'Check-in time for today has passed. Please choose tomorrow or later.' : 'Please select different dates and try again.') + '</div>'
                 + '</div>';
             updateAvailabilityBannerReal(false);
             return;
