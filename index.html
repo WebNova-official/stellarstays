@@ -255,6 +255,21 @@
         #mainNav { transition: background 0.3s, box-shadow 0.3s, border-color 0.3s, backdrop-filter 0.3s; }
         #mainNav.scrolled { background: rgba(255,255,255,0.85) !important; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 1px 0 rgba(15,31,61,0.06), 0 12px 30px -18px rgba(15,31,61,0.18); border-bottom-color: transparent !important; }
 
+        /* Destination dropdown under the "Where" search field */
+        .where-option {
+            display: flex; align-items: center; gap: 10px;
+            width: 100%; text-align: left; padding: 10px 14px;
+            font-size: 13px; font-weight: 600; color: #0f1f3d;
+            background: none; border: none; cursor: pointer;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .where-option:last-child { border-bottom: none; }
+        .where-option:hover, .where-option.highlighted { background: #faf6ee; }
+        .where-option .where-option-sub {
+            font-size: 10.5px; font-weight: 600; color: #9ca3af; margin-left: auto;
+        }
+        .where-option i { color: #a9834f; font-size: 11px; width: 14px; text-align: center; }
+
         /* Date-range chip shown above the grid when a search is active */
         .date-scope-chip {
             display: inline-flex; align-items: center; gap: 7px;
@@ -390,9 +405,10 @@
 
                 <!-- Mobile layout: stacked fields -->
                 <div class="flex flex-col gap-2 md:hidden">
-                    <div class="flex flex-col gap-0.5 px-3 py-2 bg-gray-50 rounded-2xl">
+                    <div class="relative flex flex-col gap-0.5 px-3 py-2 bg-gray-50 rounded-2xl" id="whereWrap">
                         <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Where</span>
-                        <input type="text" id="searchLocation" placeholder="Search destination or property" class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent">
+                        <input type="text" id="searchLocation" placeholder="Search destination or property" autocomplete="off" class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent">
+                        <div id="whereDropdown" class="hidden absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden z-50 max-h-64 overflow-y-auto"></div>
                     </div>
                     <div class="flex gap-2">
                         <div class="flex-1 flex flex-col gap-0.5 px-3 py-2 bg-gray-50 rounded-2xl cursor-pointer" id="triggerCheckIn">
@@ -423,9 +439,10 @@
 
                 <!-- Desktop layout: single pill row -->
                 <div class="hidden md:flex items-center divide-x divide-gray-200">
-                    <div class="flex-[2] px-5 py-2">
+                    <div class="relative flex-[2] px-5 py-2" id="whereWrapDesktop">
                         <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Where</div>
-                        <input type="text" id="searchLocationDesktop" placeholder="Search Destination or Property" class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent">
+                        <input type="text" id="searchLocationDesktop" placeholder="Search Destination or Property" autocomplete="off" class="w-full focus:outline-none text-sm font-semibold text-[--brand-navy] placeholder-gray-400 bg-transparent">
+                        <div id="whereDropdownDesktop" class="hidden absolute left-0 right-0 top-full mt-3 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden z-50 max-h-72 overflow-y-auto"></div>
                     </div>
                     <div class="flex-1 px-5 py-2 cursor-pointer" id="triggerCheckInDesktop">
                         <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Start Date</div>
@@ -788,6 +805,9 @@
             }
             initRangePicker('startDateInput', 'endDateInput');
             initRangePicker('startDateInputDesktop', 'endDateInputDesktop');
+
+            initWhereDropdown('searchLocation', 'whereDropdown');
+            initWhereDropdown('searchLocationDesktop', 'whereDropdownDesktop');
 
             document.getElementById("triggerCheckOut")?.addEventListener("click", () => {
                 document.getElementById("startDateInput")._flatpickr?.open();
@@ -1245,6 +1265,136 @@
         if (defaultLocation !== 'all') {
             document.getElementById('gridTitle').innerText = `Premium Stays in ${defaultLocation}`;
         }
+    }
+
+    // ── "Where" destination dropdown ────────────────────────────────────────
+    // Suggests destinations (unique locations) and matching villa names as the
+    // guest types, sourced from propertiesInventory once it's loaded. Typing
+    // without picking a suggestion still works — handleSearch() already does
+    // a substring match — this just makes the common case a single tap.
+    let whereHighlightIndex = -1;
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function getDestinationSuggestions(query) {
+        const q = (query || '').toLowerCase().trim();
+        const locations = [...new Set(propertiesInventory.map(p => p.location).filter(Boolean))].sort();
+        const locMatches = locations.filter(l => !q || l.toLowerCase().includes(q)).slice(0, 8);
+        const propMatches = q
+            ? propertiesInventory.filter(p => p.name && p.name.toLowerCase().includes(q)).slice(0, 4)
+            : [];
+        return { locMatches, propMatches };
+    }
+
+    function renderWhereDropdown(inputId, dropdownId) {
+        const input = document.getElementById(inputId);
+        const dropdown = document.getElementById(dropdownId);
+        if (!input || !dropdown) return;
+        whereHighlightIndex = -1;
+
+        const { locMatches, propMatches } = getDestinationSuggestions(input.value);
+
+        if (locMatches.length === 0 && propMatches.length === 0) {
+            dropdown.classList.add('hidden');
+            dropdown.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+        locMatches.forEach(loc => {
+            const count = propertiesInventory.filter(p => p.location === loc).length;
+            html += `<button type="button" class="where-option" data-target="${inputId}" data-value="${escapeHtml(loc)}">
+                <i class="fa-solid fa-location-dot"></i> ${escapeHtml(loc)}
+                <span class="where-option-sub">${count} ${count === 1 ? 'villa' : 'villas'}</span>
+            </button>`;
+        });
+        propMatches.forEach(p => {
+            html += `<button type="button" class="where-option" data-target="${inputId}" data-value="${escapeHtml(p.name)}">
+                <i class="fa-solid fa-house"></i> ${escapeHtml(p.name)}
+                <span class="where-option-sub">${escapeHtml(p.location || '')}</span>
+            </button>`;
+        });
+
+        dropdown.innerHTML = html;
+        dropdown.classList.remove('hidden');
+    }
+
+    function highlightWhereOption(options, idx) {
+        options.forEach((o, i) => o.classList.toggle('highlighted', i === idx));
+        if (options[idx]) options[idx].scrollIntoView({ block: 'nearest' });
+    }
+
+    function selectWhereOption(inputId, dropdownId, value) {
+        const input = document.getElementById(inputId);
+        if (input) input.value = value;
+
+        // Keep mobile + desktop fields in sync, same as the date pickers do
+        const partnerId = inputId === 'searchLocation' ? 'searchLocationDesktop' : 'searchLocation';
+        const partner = document.getElementById(partnerId);
+        if (partner) partner.value = value;
+
+        document.getElementById(dropdownId)?.classList.add('hidden');
+        handleSearch();
+    }
+
+    function handleWhereKeydown(e, inputId, dropdownId) {
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+
+        if (dropdown.classList.contains('hidden')) {
+            if (e.key === 'ArrowDown') renderWhereDropdown(inputId, dropdownId);
+            return;
+        }
+
+        const options = Array.from(dropdown.querySelectorAll('.where-option'));
+        if (options.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            whereHighlightIndex = Math.min(whereHighlightIndex + 1, options.length - 1);
+            highlightWhereOption(options, whereHighlightIndex);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            whereHighlightIndex = Math.max(whereHighlightIndex - 1, 0);
+            highlightWhereOption(options, whereHighlightIndex);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (whereHighlightIndex >= 0 && options[whereHighlightIndex]) {
+                selectWhereOption(inputId, dropdownId, options[whereHighlightIndex].dataset.value);
+            } else {
+                dropdown.classList.add('hidden');
+                handleSearch();
+            }
+            whereHighlightIndex = -1;
+        } else if (e.key === 'Escape') {
+            dropdown.classList.add('hidden');
+            whereHighlightIndex = -1;
+        }
+    }
+
+    function initWhereDropdown(inputId, dropdownId) {
+        const input = document.getElementById(inputId);
+        const dropdown = document.getElementById(dropdownId);
+        if (!input || !dropdown) return;
+
+        input.addEventListener('focus', () => renderWhereDropdown(inputId, dropdownId));
+        input.addEventListener('input', () => renderWhereDropdown(inputId, dropdownId));
+        // Delay the hide so a click/mousedown on an option (below) can register first
+        input.addEventListener('blur', () => setTimeout(() => dropdown.classList.add('hidden'), 150));
+        input.addEventListener('keydown', (e) => handleWhereKeydown(e, inputId, dropdownId));
+
+        // mousedown (not click) fires before the input's blur, and preventDefault
+        // stops the blur from closing the dropdown before the selection registers
+        dropdown.addEventListener('mousedown', (e) => {
+            const btn = e.target.closest('.where-option');
+            if (!btn) return;
+            e.preventDefault();
+            selectWhereOption(inputId, dropdownId, btn.dataset.value);
+        });
     }
 
     // ── Location filter — narrows the CURRENT result set.
