@@ -96,10 +96,22 @@ async function findAvailable(start, end, minGuests = 0) {
     const from = startOfDay(start);
     const to   = startOfDay(end);
 
-    const propertyFilter = { status: 'Active' };
-    if (minGuests > 0) propertyFilter.guests = { $gte: minGuests };
+    // NOTE: status is filtered in JS below, not in this Mongo query, on purpose.
+    // {status:'Active'} as a raw filter only matches documents that literally
+    // have that field stored. .lean() skips Mongoose entirely, so any property
+    // that predates the `status` field (or was written without it) has no
+    // `status` key in the DB at all and would silently disappear from every
+    // dated search — while still showing fine on the plain, non-lean
+    // `GET /api/properties` list, because Mongoose hydration backfills the
+    // schema default there. index.html's own inventory filter already treats
+    // a missing status as Active (`!p.status || p.status === 'Active'`); this
+    // matches that so a villa can't fail to list here for a reason it wouldn't
+    // fail to list on the homepage.
+    const mongoFilter = {};
+    if (minGuests > 0) mongoFilter.guests = { $gte: minGuests };
 
-    const properties = await Property.find(propertyFilter).lean();
+    const rawProperties = await Property.find(mongoFilter).lean();
+    const properties = rawProperties.filter(p => !p.status || p.status === 'Active');
     if (properties.length === 0) return { available: [], checked: 0, sfDown: false };
 
     const requestedNights = nightsBetween(from, to);
