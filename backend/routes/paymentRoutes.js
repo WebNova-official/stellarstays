@@ -60,11 +60,17 @@ router.post("/verify", async (req, res) => {
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
         // Confirm the Stayflexi enquiry so the dates show as booked on their
-        // calendar. Don't block the guest's confirmation on this — if it
-        // fails, log it loudly so it can be reconciled manually; the guest
-        // has already paid and their booking is confirmed on our side.
+        // calendar. The guest's confirmation is never blocked on this — our
+        // own DB (updated above) is already the source of truth every part
+        // of this app reads from (see availabilityService.js). But a failure
+        // here must not be silent: if Stayflexi never gets the confirmation,
+        // ITS calendar (and any OTA it feeds) would keep showing the night
+        // as free. One retry absorbs a transient blip; if it still fails,
+        // the booking is flagged (sfSyncFailed) rather than just logged, so
+        // it surfaces in the admin calendar/booking list for manual
+        // reconciliation instead of silently drifting out of sync forever.
         if (booking.stayflexiBookingId && booking.stayflexiHotelId) {
-            sf.recordExternalPayment({
+            const sfPayload = {
                 hotel_id: parseInt(booking.stayflexiHotelId),
                 booking_id: booking.stayflexiBookingId,
                 booking_source: "CUSTOM_BE",
@@ -80,11 +86,37 @@ router.post("/verify", async (req, res) => {
                 payment_issuer: "",
                 payment_mode: "ONLINE",
                 status: "SUCCESS",
-            }).catch(e =>
-                console.error(`[SF recordExternalPayment] FAILED for stayflexiBookingId=${booking.stayflexiBookingId}:`, e.message)
-            );
+            };
+
+            (async () => {
+                try {
+                    await sf.recordExternalPayment(sfPayload);
+                    if (booking.sfSyncFailed) {
+                        await Booking.findByIdAndUpdate(booking._id, { sfSyncFailed: false, sfSyncError: "" });
+                    }
+                } catch (firstErr) {
+                    console.warn(`[SF recordExternalPayment] failed once for ${booking.stayflexiBookingId}, retrying:`, firstErr.message);
+                    try {
+                        await sf.recordExternalPayment(sfPayload);
+                        if (booking.sfSyncFailed) {
+                            await Booking.findByIdAndUpdate(booking._id, { sfSyncFailed: false, sfSyncError: "" });
+                        }
+                    } catch (secondErr) {
+                        console.error(`[SF recordExternalPayment] FAILED after retry for booking ${booking._id} `
+                            + `(stayflexiBookingId=${booking.stayflexiBookingId}):`, secondErr.message);
+                        await Booking.findByIdAndUpdate(booking._id, {
+                            sfSyncFailed: true,
+                            sfSyncError: secondErr.message || "Unknown error",
+                        }).catch(e => console.error("Could not flag sfSyncFailed on booking:", e.message));
+                    }
+                }
+            })();
         } else {
             console.warn(`Booking ${booking._id} has no stayflexiBookingId — dates will NOT block on Stayflexi's calendar.`);
+            await Booking.findByIdAndUpdate(booking._id, {
+                sfSyncFailed: true,
+                sfSyncError: "No Stayflexi enquiry was linked to this booking.",
+            }).catch(e => console.error("Could not flag sfSyncFailed on booking:", e.message));
         }
 
         // Fire-and-forget: don't block the guest's confirmation on email delivery.
