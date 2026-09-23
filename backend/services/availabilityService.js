@@ -302,6 +302,8 @@ function publicBooking(b) {
         addons:       Array.isArray(b.addons) ? b.addons : [],
         source:       b.source || 'website',
         createdAt:    b.createdAt || null,
+        sfSyncFailed: !!b.sfSyncFailed,
+        sfSyncError:  b.sfSyncError || '',
     };
 }
 
