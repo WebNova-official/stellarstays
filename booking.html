@@ -369,6 +369,10 @@
                                     <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:#a7f3d0;"></span> Available</span>
                                     <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:#fca5a5;"></span> Booked</span>
                                 </div>
+                                <!-- Shown only when the villa's minStay > 1, so a guest knows before
+                                     picking a checkout date why short ranges aren't selectable, instead
+                                     of finding out only after the live rate call comes back empty. -->
+                                <div id="minStayHint" class="hidden mt-1.5 text-[10px] font-bold text-amber-600"></div>
                             </div>
 
                             <!-- Check-in / check-out time slots for the selected dates -->
@@ -858,6 +862,28 @@ function initSfDatePickers(blockedDates) {
     var blockedSet = {};
     (blockedDates || []).forEach(function(d) { blockedSet[sfToYMD(d)] = true; });
 
+    // Property.minStay (BUG FIX): this was being fetched into villaData and
+    // shown on the admin calendar, but never actually enforced here. The
+    // calendar's disable() function only knew about booked/blocked NIGHTS,
+    // not about a minimum length of stay — so a guest could freely pick a
+    // 1-night range on a villa that requires 2+ nights (common for weekend
+    // check-ins), see every day involved rendered green/selectable, submit,
+    // and only then have Stayflexi's own booking engine reject it with an
+    // empty roomTypeMap ("These dates aren't available") — which looked like
+    // a random/broken date to the guest even though nothing was actually
+    // booked or blocked. Enforcing it here means the picker itself refuses
+    // to let a too-short range be selected in the first place.
+    var minStay = Math.max(1, Number(villaData && villaData.minStay) || 1);
+    var hintEl = document.getElementById('minStayHint');
+    if (hintEl) {
+        if (minStay > 1) {
+            hintEl.textContent = minStay + '-night minimum stay';
+            hintEl.classList.remove('hidden');
+        } else {
+            hintEl.classList.add('hidden');
+        }
+    }
+
     // True if every night from `start` up to (but NOT including) `end` is free.
     // The checkout date itself is never checked here — checking out that
     // morning doesn't require that night to be free, only the nights you'd
@@ -886,10 +912,12 @@ function initSfDatePickers(blockedDates) {
 
             if (selected.length === 1) {
                 // Picking checkout: block only if it's not after check-in,
-                // or if any night strictly between check-in and this date
-                // is occupied. The date itself being occupied does NOT
-                // block it.
+                // if the resulting stay is shorter than minStay, or if any
+                // night strictly between check-in and this date is
+                // occupied. The date itself being occupied does NOT block it.
                 if (date <= selected[0]) return true;
+                var nightsPicked = Math.round((date - selected[0]) / 86400000);
+                if (nightsPicked < minStay) return true;
                 return !rangeIsFree(selected[0], date);
             }
 
