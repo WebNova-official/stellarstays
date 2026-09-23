@@ -97,8 +97,8 @@ async function loadDashboardCustomBookings() {
                 + '<div class="text-xs text-gray-400">' + (b.guestEmail || '') + '</div>'
                 + '<div class="text-xs text-gray-400">' + phoneLinks(b.guestPhone) + '</div></td>'
                 + '<td class="py-3 px-3 text-gray-600">' + (b.propertyName || '—') + '</td>'
-                + '<td class="py-3 px-3 text-gray-500 text-xs">' + (b.checkIn || '—') + '</td>'
-                + '<td class="py-3 px-3 text-gray-500 text-xs">' + (b.checkOut || '—') + '</td>'
+                + '<td class="py-3 px-3 text-gray-500 text-xs">' + fmtBookingDate(b.checkIn) + '</td>'
+                + '<td class="py-3 px-3 text-gray-500 text-xs">' + fmtBookingDate(b.checkOut) + '</td>'
                 + '<td class="py-3 px-3 text-right font-bold text-[#0f1f3d]">' + ((b.totalAmount || b.amount) ? '₹' + Number(b.totalAmount || b.amount).toLocaleString('en-IN') : '—') + '</td>'
                 + '<td class="py-3 px-3 text-center"><span class="text-xs font-bold px-2 py-0.5 rounded-full ' + statusColor + '">' + (b.status || 'pending') + '</span></td>'
                 + '<td class="py-3 px-3 text-center"><button onclick="openDashBookingDetails(' + i + ')" class="btn-ghost py-1 px-2 text-[10px] text-indigo-700 border-indigo-200"><i class="fa-solid fa-eye"></i> View</button></td>'
@@ -129,8 +129,8 @@ function openDashBookingDetails(i) {
         ['Phone', phoneLinks(b.guestPhone)],
         ['Email', b.guestEmail || '—'],
         ['Property', b.propertyName || '—'],
-        ['Check-In', b.checkIn || '—'],
-        ['Check-Out', b.checkOut || '—'],
+        ['Check-In', fmtBookingDate(b.checkIn)],
+        ['Check-Out', fmtBookingDate(b.checkOut)],
         ['Nights', b.nights != null ? b.nights : '—'],
         ['Guests', guests ? (guests + ' total (' + guestBits.join(', ') + ')') : '—'],
         ['Amount', (b.totalAmount || b.amount) ? '₹' + Number(b.totalAmount || b.amount).toLocaleString('en-IN') : '—'],
@@ -903,6 +903,41 @@ function getApiBase() {
 }
 var API = getApiBase();
 
+// ── Booking date display ──
+// Booking.checkIn / checkOut are stored as plain strings in TWO different
+// formats depending on where the booking was written from (see
+// backend/utils/dates.js for the full story):
+//   "DD-MM-YYYY HH:MM:SS"   — booking.html
+//   "YYYY-MM-DDTHH:MM:SS.." — ISO-style, other integrations
+// Every place in this file used to print b.checkIn / b.checkOut straight from
+// the API, so two bookings sitting in the same table could show up in two
+// completely different-looking formats (one with a raw T/Z in it). This
+// parses either shape and renders one consistent, human-readable format
+// everywhere. Mirrors parseBookingDate() in backend/utils/dates.js — kept
+// separate on purpose since this one only needs to format, never compare.
+function fmtBookingDate(str) {
+    if (!str) return '—';
+    str = String(str).trim();
+
+    var iso = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+    var dmy = !iso && str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[T ](\d{2}):(\d{2}))?/);
+
+    var d;
+    if (iso) {
+        d = new Date(+iso[1], +iso[2] - 1, +iso[3], +(iso[4] || 0), +(iso[5] || 0));
+    } else if (dmy) {
+        d = new Date(+dmy[3], +dmy[2] - 1, +dmy[1], +(dmy[4] || 0), +(dmy[5] || 0));
+    } else {
+        d = new Date(str);
+    }
+    if (isNaN(d.getTime())) return calEsc(str); // unparseable — show raw rather than hide it
+
+    var hasTime = (iso && iso[4] != null) || (dmy && dmy[4] != null);
+    var opts = { day: 'numeric', month: 'short', year: 'numeric' };
+    if (hasTime) { opts.hour = 'numeric'; opts.minute = '2-digit'; }
+    return d.toLocaleString('en-IN', opts);
+}
+
 // ── SF Config (from .env via /api/config) ──
 // Note: the raw API key is never sent to the browser — only a "configured" flag.
 var SF_GROUP_ID = '';
@@ -1273,8 +1308,8 @@ function calBookingCard(b) {
         ['Guest Name', calEsc(b.guestName || '—')],
         ['Phone', phoneLinks(b.guestPhone)],
         ['Email', calEsc(b.guestEmail || '—')],
-        ['Check-In', calEsc(b.checkIn || '—')],
-        ['Check-Out', calEsc(b.checkOut || '—')],
+        ['Check-In', fmtBookingDate(b.checkIn)],
+        ['Check-Out', fmtBookingDate(b.checkOut)],
         ['Nights', b.nights != null ? b.nights : '—'],
         ['Guests', guests ? guests + ' total' : '—'],
         ['Amount', b.totalAmount ? calMoney(b.totalAmount) : '—'],
@@ -2074,7 +2109,7 @@ function renderBookings() {
             + '<td class="px-4 py-3.5"><div class="text-xs font-black text-[#0f1f3d]">' + (b.bookingRef||b._id.slice(-6)) + '</div><div class="text-[10px] text-gray-400 mt-0.5">' + new Date(b.createdAt).toLocaleDateString('en-IN') + '</div></td>'
             + '<td class="px-4 py-3.5"><div class="text-sm font-bold text-gray-800">' + (b.guestName||'—') + '</div><div class="text-xs text-gray-400">' + (b.guestEmail||'') + '</div><div class="text-xs text-gray-400">' + phoneLinks(b.guestPhone) + '</div></td>'
             + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.propertyName||'—') + '</td>'
-            + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.checkIn||'—') + ' → ' + (b.checkOut||'—') + '<div class="text-[10px] text-gray-400 mt-0.5">' + (b.nights||0) + ' night' + (b.nights!==1?'s':'') + '</div></td>'
+            + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + fmtBookingDate(b.checkIn) + ' → ' + fmtBookingDate(b.checkOut) + '<div class="text-[10px] text-gray-400 mt-0.5">' + (b.nights||0) + ' night' + (b.nights!==1?'s':'') + '</div></td>'
             + '<td class="px-4 py-3.5 text-sm font-black text-[#0f1f3d]">₹' + (b.totalAmount||b.amount||0).toLocaleString('en-IN') + '</td>'
             + '<td class="px-4 py-3.5"><span class="text-xs font-bold px-2.5 py-1 rounded-full ' + sc + '">' + (b.status||'pending') + '</span>' + payBadge + '</td>'
             + '<td class="px-4 py-3.5"><div class="flex gap-1.5 flex-wrap">'
