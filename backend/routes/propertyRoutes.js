@@ -186,6 +186,8 @@ router.get("/:id/availability", async (req, res) => {
 // details behind it, so clicking a red square can show who's staying.
 //
 //   GET /api/properties/<id>/calendar?from=2026-09-01&to=2026-10-31
+//   GET /api/properties/<id>/calendar?from=...&to=...&refresh=1   (bypass the
+//     60s Stayflexi cache — used by the admin calendar's Refresh button)
 //     200 { property, days: [...], sfLinked, sfDown }
 //     400 bad dates
 //     404 no such property
@@ -214,7 +216,8 @@ router.get("/:id/calendar", async (req, res) => {
     }
 
     try {
-        const data = await availability.getPropertyCalendar(req.params.id, from, to);
+        const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+        const data = await availability.getPropertyCalendar(req.params.id, from, to, forceRefresh);
         res.set("Cache-Control", "no-store");   // booking data, never cache
         res.json(data);
     } catch (err) {
