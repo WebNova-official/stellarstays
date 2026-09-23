@@ -8,6 +8,7 @@
 
 const Property = require("../models/Property");
 const sf = require("./stayflexiService");
+const { nowIST } = require("../utils/dates");
 
 function pad(n) { return String(n).padStart(2, "0"); }
 function fmt(d, time) {
@@ -36,7 +37,7 @@ function extractRate(avail) {
 }
 
 async function fetchRatesForHotel(hotelId) {
-    const today = new Date();
+    const today = nowIST();
     const weekdayIn = nextDow(today, 2); // next Tuesday
     const weekdayOut = new Date(weekdayIn); weekdayOut.setDate(weekdayOut.getDate() + 1);
     const weekendIn = nextDow(today, 6); // next Saturday
