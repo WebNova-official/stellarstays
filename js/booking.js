@@ -526,8 +526,13 @@ async function executePaymentGateway() {
     const gst    = Math.round((baseCost + addonsTotal) * 0.18);
     const amount = baseCost + addonsTotal + gst;
 
-    const checkIn  = dates[0] ? dates[0].toISOString().slice(0, 10) : '';
-    const checkOut = dates[1] ? dates[1].toISOString().slice(0, 10) : '';
+    // NEVER use .toISOString() on a flatpickr date here — it converts to UTC
+    // first, which rolls IST (and any UTC+) midnight back to the previous day,
+    // so the booking would be saved one night earlier than what the guest
+    // actually selected and saw on screen. ymdLocal() keeps the exact calendar
+    // day that was picked (same fix already applied in booking.html).
+    const checkIn  = dates[0] ? ymdLocal(dates[0]) : '';
+    const checkOut = dates[1] ? ymdLocal(dates[1]) : '';
 
     const urlParams = new URLSearchParams(window.location.search);
 
