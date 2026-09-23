@@ -869,12 +869,19 @@
     let lastLoadFailed      = false;
 
     // ── API base: works for Live Server (:5500) AND direct (:5000)
+    // Same relative-path rule as admin.html / booking.html / confirmation.html /
+    // js/booking.js — this page is served by the same Express app that serves
+    // /api/*, so a relative path always reaches the right backend regardless of
+    // domain. (Previously hardcoded to https://stellarstays.onrender.com/api,
+    // which silently broke availability search whenever the site was reached
+    // through any other host — a custom domain, a renamed/redeployed Render
+    // service, staging, etc. — while every other page kept working.)
     function getApiBase() {
         const { hostname, port } = window.location;
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
             return port === '5000' ? '/api' : 'http://localhost:5000/api';
         }
-        return 'https://stellarstays.onrender.com/api';
+        return '/api';
     }
 
     // ── Reads whichever search inputs are visible (mobile vs desktop) right now
