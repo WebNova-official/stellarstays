@@ -2,7 +2,7 @@ const router    = require("express").Router();
 const Property  = require("../models/Property");
 const cloudinary = require("cloudinary").v2;
 const availability = require("../services/availabilityService");
-const { parseYMD, startOfDay, nightCount } = require("../utils/dates");
+const { parseYMD, startOfDay, nightCount, todayIST } = require("../utils/dates");
 
 // Upper bound on an online stay. Anything longer is almost always a typo or a
 // scraper walking the calendar, and it makes the Stayflexi window huge.
@@ -125,7 +125,7 @@ router.get("/available", async (req, res) => {
     if (end <= start) {
         return res.status(400).json({ error: "checkOut must be after checkIn" });
     }
-    if (start < startOfDay(new Date())) {
+    if (start < todayIST()) {
         return res.status(400).json({ error: "checkIn cannot be in the past" });
     }
     if (nightCount(start, end) > MAX_STAY_NIGHTS) {
