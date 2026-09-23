@@ -62,10 +62,15 @@ function sfCacheSet(key, value) {
 }
 
 // Returns a Set of YYYY-MM-DD strings that Stayflexi reports as sold out.
-async function sfSoldOutNights(hotelId, start, end) {
+// forceRefresh=true skips the read (but still repopulates) the cache — used
+// by the admin calendar's Refresh button, so "refresh" actually means "ask
+// Stayflexi again" and not "re-render whatever we already had for up to 60s".
+async function sfSoldOutNights(hotelId, start, end, forceRefresh = false) {
     const key = `${hotelId}|${toSfDate(start)}|${toSfDate(end)}`;
-    const cached = sfCacheGet(key);
-    if (cached) return cached;
+    if (!forceRefresh) {
+        const cached = sfCacheGet(key);
+        if (cached) return cached;
+    }
 
     const calendar = await sf.getHotelCalendar(toSfDate(start), toSfDate(end), hotelId);
     const counts = (calendar && calendar.aggregate && calendar.aggregate.availableRoomCount) || [];
@@ -305,7 +310,7 @@ function publicBooking(b) {
  * @param {Date}   to    last day shown  (inclusive)
  * @returns {Promise<{property: object, days: Array, sfLinked: boolean, sfDown: boolean}>}
  */
-async function getPropertyCalendar(propertyId, from, to) {
+async function getPropertyCalendar(propertyId, from, to, forceRefresh = false) {
     const start = startOfDay(from);
     const end   = startOfDay(to);
 
@@ -365,7 +370,7 @@ async function getPropertyCalendar(propertyId, from, to) {
             // +1 day so the last day of the window is itself covered
             const sfEnd = new Date(end);
             sfEnd.setDate(sfEnd.getDate() + 1);
-            sfSoldOut = await sfSoldOutNights(String(property.stayflexi), start, sfEnd);
+            sfSoldOut = await sfSoldOutNights(String(property.stayflexi), start, sfEnd, forceRefresh);
         } catch (e) {
             sfError = e.message;
             console.warn('[calendar] Stayflexi calendar failed for hotel',
