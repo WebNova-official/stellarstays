@@ -569,6 +569,9 @@ function kpi(label, val) {
                     <div id="calMonthLabel" class="text-sm font-black text-[#0f1f3d] min-w-[130px] text-center">—</div>
                     <button onclick="calShiftMonth(1)" class="btn-ghost" title="Next month"><i class="fa-solid fa-chevron-right"></i></button>
                     <button onclick="calShiftMonth(0)" class="btn-ghost text-indigo-700 border-indigo-200">Today</button>
+                    <button id="calRefreshBtn" onclick="loadCalendar(true)" class="btn-ghost text-emerald-700 border-emerald-200" title="Re-check Stayflexi now, bypassing the cache">
+                        <i class="fa-solid fa-rotate-right"></i> Refresh
+                    </button>
                 </div>
             </div>
 
@@ -1089,7 +1092,7 @@ function calNotice(kind, msg) {
 
 function calPad(n) { return String(n).padStart(2, '0'); }
 
-async function loadCalendar() {
+async function loadCalendar(forceRefresh) {
     var sel = document.getElementById('calVilla');
     calState.villaId = sel.value;
     calState.villaName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
@@ -1100,9 +1103,14 @@ async function loadCalendar() {
     if (!calState.villaId) return;
 
     var grid = document.getElementById('calGrid');
+    var refreshBtn = document.getElementById('calRefreshBtn');
     grid.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm animate-pulse">Loading calendar…</div>';
     document.getElementById('calSummary').classList.add('hidden');
     calNotice(null);
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        if (forceRefresh) refreshBtn.innerHTML = '<i class="fa-solid fa-rotate-right fa-spin"></i> Refreshing…';
+    }
 
     // Whole month, first to last day.
     var first = calState.year + '-' + calPad(calState.month + 1) + '-01';
@@ -1116,7 +1124,8 @@ async function loadCalendar() {
 
     try {
         var res = await fetch(API + '/properties/' + calState.villaId
-            + '/calendar?from=' + first + '&to=' + last);
+            + '/calendar?from=' + first + '&to=' + last
+            + (forceRefresh ? '&refresh=1' : ''));
         var data = await res.json();
         if (calState.loading !== token) return;   // superseded by a newer click
 
@@ -1144,6 +1153,11 @@ async function loadCalendar() {
         if (calState.loading !== token) return;
         grid.innerHTML = '<div class="p-8 text-center text-red-500 text-sm font-semibold">'
             + 'Could not load the calendar — ' + calEsc(e.message) + '</div>';
+    } finally {
+        if (calState.loading === token && refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Refresh';
+        }
     }
 }
 
