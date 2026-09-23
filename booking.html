@@ -1209,12 +1209,55 @@ async function loadBookingPage() {
             }
         }
 
+        // ── Our own backend's unified calendar (BUG FIX) ──
+        // Until now this picker only ever asked Stayflexi's raw hotelcalendar
+        // for blocked nights. But admin.html's calendar — and the actual
+        // booking-conflict check on submit — go through
+        // availabilityService.getPropertyCalendar(), which checks OUR
+        // Booking collection FIRST, before Stayflexi. Those two are not
+        // guaranteed to agree: recordExternalPayment (the call that confirms
+        // a paid booking on Stayflexi's own calendar) is best-effort and can
+        // fail after a guest has already paid — see paymentRoutes.js. When
+        // that happens, our DB correctly shows the night as booked (admin
+        // sees it red) but Stayflexi's raw calendar still reports it free,
+        // so this picker kept showing it green forever, on every refresh,
+        // until someone manually fixed it on Stayflexi.
+        //
+        // Fetching our own /calendar endpoint here — the exact same source
+        // admin.html uses — closes that gap: a night we've already sold
+        // ourselves can never appear selectable here again, regardless of
+        // whether the Stayflexi sync succeeded. This is additive to the live
+        // SF check above (still fetched, still fail-closed on its own), not
+        // a replacement — the two are unioned so either source blocking a
+        // night is enough to block it here.
+        var ownBlockedDates = [];
+        if (sfHotelId) {
+            try {
+                var ownCalFrom = toLocalYMD(new Date());
+                var ownCalToDate = new Date(); ownCalToDate.setDate(ownCalToDate.getDate() + 90);
+                var ownCalTo = toLocalYMD(ownCalToDate);
+                var ownCalRes = await fetch(getApiBase() + '/properties/' + propertyId
+                    + '/calendar?from=' + ownCalFrom + '&to=' + ownCalTo);
+                if (ownCalRes.ok) {
+                    var ownCalData = await ownCalRes.json();
+                    ownBlockedDates = (ownCalData.days || [])
+                        .filter(function(d) { return d.status !== 'available'; })
+                        .map(function(d) { return d.date; });
+                } else {
+                    console.warn('[StellarStays] Own calendar check failed (HTTP ' + ownCalRes.status + ') — relying on Stayflexi + admin-blocked dates only.');
+                }
+            } catch (e) {
+                console.warn('[StellarStays] Own calendar check failed:', e.message);
+            }
+        }
+
         // ── Reinit date pickers with blocked dates from DB + live SF blocked dates ──
-        reinitDatePickers((villaData.blockedDates || []).concat(sfLiveBlockedDates));
+        var allBlockedDates = (villaData.blockedDates || []).concat(sfLiveBlockedDates).concat(ownBlockedDates);
+        reinitDatePickers(allBlockedDates);
 
         // If SF property, reinit the date picker(s) now that live blocked dates are known
         if (sfHotelId) {
-            initSfDatePickers((villaData.blockedDates || []).concat(sfLiveBlockedDates));
+            initSfDatePickers(allBlockedDates);
         }
 
     } catch (err) {
