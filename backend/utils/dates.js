@@ -18,6 +18,37 @@
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// The property's business timezone. Every "today"/"is this in the past"
+// decision on the server MUST go through nowIST()/todayIST(), never plain
+// `new Date()` — a bare `new Date()` reads the HOST's OS timezone, which on
+// most hosting (Render included) defaults to UTC, not IST. Since IST is
+// UTC+5:30, the host's calendar day lags the real IST day by a full day for
+// the ~5.5 hours between IST midnight and 5:30 AM IST. During that window a
+// plain `new Date()`-based "today" would: (a) highlight the wrong day as
+// "today" on the admin calendar, and (b) let a checkIn that's already in the
+// past by IST reckoning slip the "checkIn cannot be in the past" guard,
+// since the server would still consider that date "today", not past.
+// booking.html already had to solve this exact problem client-side
+// (see sfNowIST()) — this is the same fix, server-side.
+const SERVER_TZ = 'Asia/Kolkata';
+
+function nowIST() {
+    const parts = {};
+    new Intl.DateTimeFormat('en-GB', {
+        timeZone: SERVER_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date()).forEach(p => { parts[p.type] = p.value; });
+    return new Date(
+        +parts.year, +parts.month - 1, +parts.day,
+        +parts.hour, +parts.minute, +parts.second
+    );
+}
+
+function todayIST() {
+    const n = nowIST();
+    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+}
+
 function parseBookingDate(str) {
     if (!str) return null;
     str = String(str).trim();
@@ -101,6 +132,8 @@ function rangesOverlap(aStart, aEnd, bStart, bEnd) {
 
 module.exports = {
     DAY_MS,
+    nowIST,
+    todayIST,
     parseBookingDate,
     parseYMD,
     startOfDay,
