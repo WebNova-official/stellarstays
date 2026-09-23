@@ -902,6 +902,15 @@ function initSfDatePickers(blockedDates) {
             checkOut = toLocalYMD(dates[1]);
             updateAvailabilityBanner();
             sfOnDatesChange(checkIn, checkOut);
+        },
+        // Flags genuinely sold/blocked nights with .day-unavailable (red,
+        // strikethrough — see the CSS comment above) so a guest sees which
+        // dates are actually unavailable *before* picking them, instead of
+        // every non-selectable day (blocked AND merely-past) looking the
+        // same and only finding out after sfOnDatesChange() comes back.
+        onDayCreate: function(dObj, dStr, fp, dayElem) {
+            var ymd = toLocalYMD(dayElem.dateObj);
+            if (blockedSet[ymd]) dayElem.classList.add('day-unavailable');
         }
     };
     if (el._flatpickr) el._flatpickr.destroy();
