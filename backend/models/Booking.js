@@ -62,6 +62,15 @@ const bookingSchema = new mongoose.Schema({
     roomTypeId:         { type: String },
     ratePlanId:         { type: String },
 
+    // Set when recordExternalPayment (confirming the SF enquiry into a real
+    // held reservation) fails after payment. When this is true, our own DB
+    // is the confirmed source of truth (see availabilityService.js) but
+    // Stayflexi's own calendar/OTAs may not know this night is taken yet —
+    // an admin needs to reconcile it manually on the Stayflexi dashboard.
+    // NEVER used to hide/release the booking from our own availability checks.
+    sfSyncFailed: { type: Boolean, default: false },
+    sfSyncError:  { type: String, default: "" },
+
 }, { timestamps: true });
 
 bookingSchema.pre("save", async function () {
