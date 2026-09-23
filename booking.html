@@ -1117,17 +1117,34 @@ async function loadBookingPage() {
         if (sfHotelId) {
             if (sfSection) sfSection.classList.remove('hidden');
 
-            // Init the date picker — see initSfDatePickers() below. Reinitialized
-            // again once live blocked dates come back from Stayflexi.
+            // ── Loading state, not a false "everything's available" state ──
+            // initSfDatePickers([]) used to be called right here, with an
+            // empty blocked-dates list, before Stayflexi's live calendar or
+            // our own /calendar data had come back. For the several hundred
+            // ms (longer on slow connections) between that call and the real
+            // reinit near the bottom of this block, the picker was fully
+            // interactive with EVERY date — including genuinely booked ones —
+            // shown as selectable. That's exactly the "no data yet = available"
+            // assumption this system must never make. The input is disabled
+            // with a loading label instead, and the picker isn't created
+            // until the real blocked-dates union is known.
+            var dateInputEl = document.getElementById('dateRangePickerMain');
+            if (dateInputEl) {
+                dateInputEl.disabled = true;
+                dateInputEl.placeholder = 'Checking availability…';
+                dateInputEl.classList.add('opacity-60', 'cursor-wait');
+            }
+
             await sfLoadSameDayCutoff(sfHotelId);
             // A ?checkIn= of today that's already past check-in time can't be booked
             if (checkIn && checkIn < toLocalYMD(sfEarliestCheckIn())) {
                 checkIn = ''; checkOut = '';
                 updateAvailabilityBanner();
             }
-            initSfDatePickers([]);
             // Pre-fill if URL had dates — kicks off the availability/room lookup
-            // immediately, ahead of the blocked-dates reinit below.
+            // immediately, ahead of the blocked-dates reinit below. This does
+            // not touch the flatpickr instance, so it's safe to run before the
+            // picker itself exists.
             if (checkIn && checkOut) sfOnDatesChange(checkIn, checkOut);
 
             // Mobile bar
@@ -1251,18 +1268,36 @@ async function loadBookingPage() {
             }
         }
 
-        // ── Reinit date pickers with blocked dates from DB + live SF blocked dates ──
+        // ── Init/reinit date pickers with blocked dates from DB + live SF blocked dates ──
+        // This is the FIRST time the Stayflexi picker becomes interactive —
+        // see the loading-state comment above. It now only ever appears with
+        // the real, fully-merged blocked-dates set already applied, never
+        // with an empty one.
         var allBlockedDates = (villaData.blockedDates || []).concat(sfLiveBlockedDates).concat(ownBlockedDates);
         reinitDatePickers(allBlockedDates);
 
-        // If SF property, reinit the date picker(s) now that live blocked dates are known
         if (sfHotelId) {
             initSfDatePickers(allBlockedDates);
+            var dateInputElReady = document.getElementById('dateRangePickerMain');
+            if (dateInputElReady) {
+                dateInputElReady.disabled = false;
+                dateInputElReady.placeholder = 'Check-in \u2192 Check-out';
+                dateInputElReady.classList.remove('opacity-60', 'cursor-wait');
+            }
         }
 
     } catch (err) {
         console.error('[StellarStays] Could not load property:', err);
         document.getElementById('detailVillaName').textContent = 'Could not load property';
+        // Safety net: if anything above threw before the picker was
+        // (re)initialized with real data, leave the input disabled rather
+        // than reverting to an interactive-but-empty (falsely "all green")
+        // picker. A disabled/loading input is a safe failure; a picker that
+        // lets someone select an unverified date is not.
+        var dateInputElErr = document.getElementById('dateRangePickerMain');
+        if (dateInputElErr && dateInputElErr.disabled) {
+            dateInputElErr.placeholder = 'Could not load availability — please refresh';
+        }
     }
 }
 
