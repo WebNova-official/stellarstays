@@ -28,6 +28,7 @@ const {
     toSfDate,
     nightsBetween,
     rangesOverlap,
+    todayIST,
 } = require('../utils/dates');
 
 // Statuses that do NOT hold inventory. Everything else blocks the dates,
@@ -379,7 +380,7 @@ async function getPropertyCalendar(propertyId, from, to, forceRefresh = false) {
     }
 
     // ── Build the grid ──
-    const today = startOfDay(new Date());
+    const today = todayIST();
     const days = [];
     const cursor = new Date(start);
 
