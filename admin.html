@@ -1317,6 +1317,13 @@ function calStatusBox(bg, fg, title, text) {
 
 function calBookingCard(b) {
     var guests = (b.adults || 0) + (b.children || 0) + (b.infants || 0);
+    var syncWarning = b.sfSyncFailed
+        ? '<div class="rounded-lg p-3 mb-3 text-xs font-semibold" style="background:#fef3c7;color:#92400e;">'
+          + '<i class="fa-solid fa-triangle-exclamation"></i> This booking is confirmed in StellarStays but '
+          + 'Stayflexi was never notified (' + calEsc(b.sfSyncError || 'unknown error') + '). '
+          + 'These dates may still show as available on Stayflexi/OTAs — block them manually there until this is reconciled.'
+          + '</div>'
+        : '';
     var rows = [
         ['Booking Ref', calEsc(b.bookingRef || '—')],
         ['Guest Name', calEsc(b.guestName || '—')],
@@ -1336,6 +1343,7 @@ function calBookingCard(b) {
     if (b.createdAt) rows.push(['Booked On', new Date(b.createdAt).toLocaleString('en-IN')]);
 
     return '<div class="rounded-xl border border-red-200 bg-red-50/40 p-4 mb-3">'
+        + syncWarning
         + '<div class="grid grid-cols-2 gap-4">'
         + rows.map(function(r) {
             return '<div><div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">'
@@ -2119,8 +2127,11 @@ function renderBookings() {
         var payBadge = b.paid === true
             ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50 ml-1"><i class="fa-solid fa-circle-check"></i> Paid</span>'
             : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-700 bg-amber-50 ml-1">Unpaid</span>';
+        var sfWarnBadge = b.sfSyncFailed
+            ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-800 bg-amber-100 ml-1" title="' + calEsc(b.sfSyncError || 'Stayflexi was not notified of this booking') + '"><i class="fa-solid fa-triangle-exclamation"></i> SF not synced</span>'
+            : '';
         return '<tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">'
-            + '<td class="px-4 py-3.5"><div class="text-xs font-black text-[#0f1f3d]">' + (b.bookingRef||b._id.slice(-6)) + '</div><div class="text-[10px] text-gray-400 mt-0.5">' + new Date(b.createdAt).toLocaleDateString('en-IN') + '</div></td>'
+            + '<td class="px-4 py-3.5"><div class="text-xs font-black text-[#0f1f3d]">' + (b.bookingRef||b._id.slice(-6)) + sfWarnBadge + '</div><div class="text-[10px] text-gray-400 mt-0.5">' + new Date(b.createdAt).toLocaleDateString('en-IN') + '</div></td>'
             + '<td class="px-4 py-3.5"><div class="text-sm font-bold text-gray-800">' + (b.guestName||'—') + '</div><div class="text-xs text-gray-400">' + (b.guestEmail||'') + '</div><div class="text-xs text-gray-400">' + phoneLinks(b.guestPhone) + '</div></td>'
             + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + (b.propertyName||'—') + '</td>'
             + '<td class="px-4 py-3.5 text-xs text-gray-600 font-semibold">' + fmtBookingDate(b.checkIn) + ' → ' + fmtBookingDate(b.checkOut) + '<div class="text-[10px] text-gray-400 mt-0.5">' + (b.nights||0) + ' night' + (b.nights!==1?'s':'') + '</div></td>'
