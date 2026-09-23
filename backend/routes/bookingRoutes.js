@@ -113,10 +113,15 @@ router.post("/", async (req, res) => {
     }
 });
 
-// ── GET /api/bookings — list all bookings (admin) ──
+// ── GET /api/bookings — list all bookings (admin panel + booking.html's
+// client-side "which nights are taken" check both read this) ──
+// no-store: this is the exact list booking.html filters client-side to
+// paint the customer calendar red. A cached copy here is how a guest can
+// see a night as bookable that was just booked by someone else.
 router.get("/", async (req, res) => {
     try {
         const bookings = await Booking.find().sort({ createdAt: -1 });
+        res.set("Cache-Control", "no-store");
         res.json(bookings);
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -128,6 +133,7 @@ router.get("/:id", async (req, res) => {
     try {
         const booking = await Booking.findById(req.params.id);
         if (!booking) return res.status(404).json({ success: false, message: "Not found" });
+        res.set("Cache-Control", "no-store");
         res.json(booking);
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
