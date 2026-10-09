@@ -1252,22 +1252,42 @@ async function loadBookingPage() {
         // night is enough to block it here.
         var ownBlockedDates = [];
         if (sfHotelId) {
-            try {
-                var ownCalFrom = toLocalYMD(new Date());
-                var ownCalToDate = new Date(); ownCalToDate.setDate(ownCalToDate.getDate() + 90);
-                var ownCalTo = toLocalYMD(ownCalToDate);
-                var ownCalRes = await fetch(getApiBase() + '/properties/' + propertyId
-                    + '/calendar?from=' + ownCalFrom + '&to=' + ownCalTo);
-                if (ownCalRes.ok) {
-                    var ownCalData = await ownCalRes.json();
-                    ownBlockedDates = (ownCalData.days || [])
-                        .filter(function(d) { return d.status !== 'available'; })
-                        .map(function(d) { return d.date; });
-                } else {
-                    console.warn('[StellarStays] Own calendar check failed (HTTP ' + ownCalRes.status + ') — relying on Stayflexi + admin-blocked dates only.');
+            var ownCalFrom = toLocalYMD(new Date());
+            var ownCalToDate = new Date(); ownCalToDate.setDate(ownCalToDate.getDate() + 90);
+            var ownCalTo = toLocalYMD(ownCalToDate);
+            var ownCalUrl = getApiBase() + '/properties/' + propertyId
+                + '/calendar?from=' + ownCalFrom + '&to=' + ownCalTo + '&_=' + Date.now();
+            var ownCalData = null;
+            // Up to 3 tries: after a refresh the host (e.g. a sleeping free-tier
+            // server) can fail the first request or two while it wakes up.
+            for (var attempt = 0; attempt < 3 && !ownCalData; attempt++) {
+                try {
+                    var ownCalRes = await fetch(ownCalUrl, { cache: 'no-store' });
+                    if (ownCalRes.ok) ownCalData = await ownCalRes.json();
+                    else console.warn('[StellarStays] Own calendar HTTP ' + ownCalRes.status + ' (attempt ' + (attempt + 1) + ')');
+                } catch (e) {
+                    console.warn('[StellarStays] Own calendar failed (attempt ' + (attempt + 1) + '):', e.message);
                 }
-            } catch (e) {
-                console.warn('[StellarStays] Own calendar check failed:', e.message);
+                if (!ownCalData && attempt < 2) await new Promise(function (r) { setTimeout(r, 800 * (attempt + 1)); });
+            }
+            if (ownCalData && Array.isArray(ownCalData.days) && ownCalData.days.length) {
+                ownBlockedDates = ownCalData.days
+                    .filter(function(d) { return d.status !== 'available'; })
+                    .map(function(d) { return d.date; });
+            } else {
+                // FAIL CLOSED. Our own bookings are the only place a night we've
+                // already sold is guaranteed to be recorded (Stayflexi's calendar can
+                // lag behind). If we can't read them, showing every date as free is
+                // exactly the bug -- so block the window and ask the guest to retry.
+                console.error('[StellarStays] Own calendar unavailable after retries -- blocking all dates.');
+                var walk2 = new Date();
+                for (var i2 = 0; i2 <= 90; i2++) { ownBlockedDates.push(toLocalYMD(walk2)); walk2.setDate(walk2.getDate() + 1); }
+                var availBannerOwn = document.getElementById('availBanner');
+                if (availBannerOwn) {
+                    availBannerOwn.innerHTML = '<div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-red-50"><i class="fa-solid fa-triangle-exclamation text-red-500 text-2xl"></i></div>'
+                        + '<div class="flex-1"><div class="text-sm font-black text-red-700">Couldn\'t load availability</div>'
+                        + '<div class="text-xs text-gray-500 mt-0.5">Please refresh the page in a few seconds, or message us on WhatsApp to check dates.</div></div>';
+                }
             }
         }
 
@@ -1314,7 +1334,7 @@ var sfGuests = { adults: 2, children: 0 };
 // Routes through backend proxy (/api/sf/raw) — SF_API_KEY stays server-side,
 // never touches the browser. Path/query built same as before, just forwarded.
 function sfFetch(path) {
-    return fetch(getApiBase() + '/sf/raw?path=' + encodeURIComponent(path)).then(function(r) {
+    return fetch(getApiBase() + '/sf/raw?path=' + encodeURIComponent(path), { cache: 'no-store' }).then(function(r) {
         if (!r.ok) throw new Error('SF API ' + r.status);
         return r.json();
     });
@@ -1395,7 +1415,9 @@ function sfBreakdownRows(cinISO, coutISO, total) {
 
     var computed = wdN * wd + weN * we;
     var diff = Math.round(total - computed);
-    if (diff !== 0) rows.push({ label: 'Seasonal / live rate adjustment', amount: diff });
+    // Stored rates don't reconcile with Stayflexi's total -> show no split at
+    // all rather than an invented one. The room price above remains the truth.
+    if (diff !== 0) return null;
     return rows;
 }
 
