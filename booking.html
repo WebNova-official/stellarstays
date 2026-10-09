@@ -399,6 +399,8 @@
                                 </div>
                             </div>
 
+                            <div id="sfSelBreakdown" class="hidden bg-white border border-gray-100 rounded-2xl px-4 pb-3"></div>
+
                             <button id="sfBookCta" onclick="openSfBookingModal()" class="hidden w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-3.5 rounded-xl shadow-md transition tracking-wide items-center justify-center gap-2 text-sm">
                                 <i class="fa-solid fa-lock text-xs"></i> Continue to Book
                         </button>
@@ -460,6 +462,7 @@
                 <div class="flex justify-between"><span class="text-gray-500">Room</span><span id="sfModalRoom" class="font-bold text-[#0f1f3d]">—</span></div>
                 <div class="flex justify-between"><span class="text-gray-500">Rate Plan</span><span id="sfModalPlan" class="font-bold text-[#0f1f3d]">—</span></div>
                 <div class="flex justify-between"><span class="text-gray-500">Dates</span><span id="sfModalDates" class="font-bold text-[#0f1f3d]">—</span></div>
+                <div id="sfModalBreakdown" class="space-y-1"></div>
                 <div class="flex justify-between border-t border-amber-200 pt-1 mt-1">
                     <span class="font-black text-[#0f1f3d]">Total</span><span id="sfModalTotal" class="font-black text-emerald-600">₹0</span>
                 </div>
@@ -1339,6 +1342,58 @@ function sfTimeTo24(timeStr, fallback) {
     return String(h).padStart(2,'0') + ':' + String(min).padStart(2,'0') + ':00';
 }
 
+// ── Price breakdown ───────────────────────────────────────────────────────
+// Splits a stay into weekday and weekend nights and prices each with the
+// property's own rates (Property.pricePerNight / Property.weekendRate). Fri and
+// Sat NIGHTS are weekend nights — the same rule js/booking.js and the admin
+// calendar use. Stayflexi's total stays the amount actually charged; if our
+// rates don't add up to it exactly (live SF pricing, guest-count rates, etc.)
+// the difference is shown as its own line instead of being hidden, so the
+// breakdown always sums to the real total.
+function sfNightsFromISO(cinISO, coutISO) {
+    var a = String(cinISO).split('-'), b = String(coutISO).split('-');
+    if (a.length !== 3 || b.length !== 3) return [];
+    var cur = new Date(+a[0], +a[1] - 1, +a[2]);
+    var end = new Date(+b[0], +b[1] - 1, +b[2]);
+    var out = [];
+    while (cur < end && out.length < 120) { out.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
+    return out;
+}
+
+function sfInr(n) { return '\u20b9' + Math.round(n).toLocaleString('en-IN'); }
+
+function sfBreakdownRows(cinISO, coutISO, total) {
+    var nights = sfNightsFromISO(cinISO, coutISO);
+    if (!nights.length || !villaData) return null;
+    var wd = Number(villaData.pricePerNight) || 0;
+    var we = Number(villaData.weekendRate) || wd;
+    if (!wd) return null;
+
+    var wdN = 0, weN = 0;
+    nights.forEach(function (d) { var dow = d.getDay(); if (dow === 5 || dow === 6) weN++; else wdN++; });
+
+    var rows = [];
+    if (wdN) rows.push({ label: wdN + ' weekday night' + (wdN > 1 ? 's' : '') + ' \u00d7 ' + sfInr(wd), amount: wdN * wd });
+    if (weN) rows.push({ label: weN + ' weekend night' + (weN > 1 ? 's' : '') + ' (Fri/Sat) \u00d7 ' + sfInr(we), amount: weN * we });
+
+    var computed = wdN * wd + weN * we;
+    var diff = Math.round(total - computed);
+    if (diff !== 0) rows.push({ label: 'Rate adjustment (live pricing)', amount: diff });
+    return rows;
+}
+
+function sfBreakdownHtml(cinISO, coutISO, total) {
+    var rows = sfBreakdownRows(cinISO, coutISO, total);
+    if (!rows) return '';
+    var html = '<div class="mt-3 pt-3 border-t border-dashed border-gray-200 text-[11px] text-gray-500 space-y-1">';
+    rows.forEach(function (r) {
+        html += '<div class="flex justify-between gap-3"><span>' + r.label + '</span><span class="font-semibold text-gray-700 shrink-0">'
+              + (r.amount < 0 ? '\u2212' : '') + sfInr(Math.abs(r.amount)) + '</span></div>';
+    });
+    html += '<div class="flex justify-between gap-3 pt-1 border-t border-gray-100 font-black text-[#0f1f3d] text-xs"><span>Total</span><span>' + sfInr(total) + '</span></div></div>';
+    return html;
+}
+
 // Fetch check-in/out times then availability when dates change for SF property
 async function sfOnDatesChange(cin, cout) {
     if (!cin || !cout || !villaData || !villaData.stayflexi) return;
@@ -1411,6 +1466,7 @@ async function sfOnDatesChange(cin, cout) {
                     + '<div class="text-right"><div class="text-lg font-black text-emerald-600">₹' + price.toLocaleString('en-IN') + '</div>'
                     + '<div class="text-[10px] text-gray-400">' + avail + ' left</div></div>'
                     + '</div>'
+                    + sfBreakdownHtml(cin, cout, price)
                     + '<button onclick="selectSfRoom(' + JSON.stringify({
                         roomTypeId: room.roomTypeId, roomTypeName: room.roomTypeName||'Room',
                         ratePlanId: rate.ratePlanId, ratePlanName: rate.ratePlanName||'Standard',
@@ -1451,6 +1507,10 @@ function selectSfRoom(room) {
     document.getElementById('sfSelRatePlan').textContent  = room.ratePlanName;
     document.getElementById('sfSelTotal').textContent     = '₹' + room.price.toLocaleString('en-IN');
     document.getElementById('sfSelectedRoom').classList.remove('hidden');
+    var bdHtml = sfBreakdownHtml(room.checkinISO, room.checkoutISO, room.price);
+    var bdEl = document.getElementById('sfSelBreakdown');
+    bdEl.innerHTML = bdHtml;
+    bdEl.classList.toggle('hidden', !bdHtml);
     document.getElementById('sfBookCta').classList.remove('hidden');
     // Hide the room list once something's selected, so there's only one box
     // on screen (the selected-room summary) instead of the card + summary both showing.
@@ -1460,6 +1520,7 @@ function selectSfRoom(room) {
 function clearSfSelection() {
     sfSelectedRoom = null;
     document.getElementById('sfSelectedRoom').classList.add('hidden');
+    document.getElementById('sfSelBreakdown').classList.add('hidden');
     document.getElementById('sfBookCta').classList.add('hidden');
     // Bring the room list back so the guest can pick a different room.
     document.getElementById('sfRoomCards').classList.remove('hidden');
@@ -1471,6 +1532,11 @@ function openSfBookingModal() {
     document.getElementById('sfModalPlan').textContent  = sfSelectedRoom.ratePlanName;
     document.getElementById('sfModalDates').textContent = (checkIn||'') + ' → ' + (checkOut||'');
     document.getElementById('sfModalTotal').textContent = '₹' + sfSelectedRoom.price.toLocaleString('en-IN');
+    var mRows = sfBreakdownRows(sfSelectedRoom.checkinISO, sfSelectedRoom.checkoutISO, sfSelectedRoom.price);
+    document.getElementById('sfModalBreakdown').innerHTML = (mRows || []).map(function (r) {
+        return '<div class="flex justify-between gap-3"><span class="text-gray-500">' + r.label + '</span><span class="font-bold text-[#0f1f3d] shrink-0">'
+             + (r.amount < 0 ? '\u2212' : '') + sfInr(Math.abs(r.amount)) + '</span></div>';
+    }).join('');
     document.getElementById('sfAdultsCount').textContent   = sfGuests.adults;
     document.getElementById('sfChildrenCount').textContent = sfGuests.children;
     document.getElementById('sfBookingModal').classList.remove('hidden');
