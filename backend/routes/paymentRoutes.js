@@ -131,4 +131,31 @@ router.post("/verify", async (req, res) => {
     }
 });
 
+// POST /api/payments/abandon  { bookingId }
+// Called by booking.html when the guest closes Razorpay Checkout or the payment
+// fails. Releases the dates immediately (local booking -> Cancelled) and cancels
+// the Stayflexi enquiry, instead of leaving both holding the villa until they
+// time out. Only ever touches UNPAID bookings — a paid booking is never released.
+router.post("/abandon", async (req, res) => {
+    try {
+        const { bookingId } = req.body;
+        const booking = await Booking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+        if (booking.paid) return res.json({ success: true, released: false, reason: "already_paid" });
+
+        booking.status = "Cancelled";
+        await booking.save();
+
+        if (booking.stayflexiBookingId) {
+            sf.cancelBooking(booking.stayflexiBookingId).catch(e =>
+                console.warn(`[abandon] SF enquiry cancel failed for ${booking.stayflexiBookingId}:`, e.message)
+            );
+        }
+        res.json({ success: true, released: true });
+    } catch (err) {
+        console.error("Abandon booking error:", err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 module.exports = router;
