@@ -32,12 +32,32 @@ const {
 } = require('../utils/dates');
 
 // Statuses that do NOT hold inventory. Everything else blocks the dates,
-// including "Pending" — an unpaid booking still holds the room, and treating
-// pending as free is how two people end up paying for the same night.
+// including a *fresh* "Pending" — an unpaid booking still holds the room while
+// the guest is in the payment window, and treating it as free is how two
+// people end up paying for the same night.
 const RELEASED_STATUSES = new Set(['cancelled', 'failed', 'expired', 'refunded']);
 
+// How long an UNPAID website booking holds its dates. This matches the 30-minute
+// hold Stayflexi puts on the enquiry we create alongside it. Without an expiry,
+// every abandoned checkout (closed tab, dismissed Razorpay modal) blocked its
+// dates forever, on both our site and the admin calendar.
+const PENDING_HOLD_MS = (Number(process.env.PENDING_HOLD_MINUTES) || 30) * 60 * 1000;
+
 function holdsInventory(booking) {
-    return !RELEASED_STATUSES.has(String(booking.status || '').toLowerCase());
+    const status = String(booking.status || '').toLowerCase();
+    if (RELEASED_STATUSES.has(status)) return false;
+
+    // Stale unpaid hold from the public site -> released. Anything paid,
+    // confirmed, or entered manually by an admin (source !== 'website') holds
+    // until someone explicitly cancels it.
+    const isUnpaidWebsitePending =
+        status === 'pending' && !booking.paid &&
+        (!booking.source || booking.source === 'website');
+    if (isUnpaidWebsitePending && booking.createdAt) {
+        const age = Date.now() - new Date(booking.createdAt).getTime();
+        if (age > PENDING_HOLD_MS) return false;
+    }
+    return true;
 }
 
 // ── Stayflexi calendar cache ────────────────────────────────────────────────
@@ -130,7 +150,7 @@ async function findAvailable(start, end, minGuests = 0) {
     // a small read.
     const propertyIds = properties.map(p => p._id);
     const bookings = await Booking.find({ property: { $in: propertyIds } })
-        .select('property checkIn checkOut status')
+        .select('property checkIn checkOut status paid source createdAt')
         .lean();
 
     const bookedIds = new Set();
@@ -215,9 +235,13 @@ async function findAvailable(start, end, minGuests = 0) {
 
 /**
  * Single-property check, for re-validating right before payment.
+ * opts.skipStayflexi: used when saving a booking whose Stayflexi enquiry was
+ * ALREADY created — that enquiry holds the room on SF's calendar, so asking SF
+ * would report our own hold as "sold out" and reject the guest's own booking.
+ * opts.excludeBookingId: ignore one booking (e.g. when re-checking itself).
  * @returns {Promise<{available: boolean, reason: string|null}>}
  */
-async function isPropertyAvailable(propertyId, start, end) {
+async function isPropertyAvailable(propertyId, start, end, opts = {}) {
     const from = startOfDay(start);
     const to   = startOfDay(end);
 
@@ -230,10 +254,11 @@ async function isPropertyAvailable(propertyId, start, end) {
     const requestedNights = nightsBetween(from, to);
 
     const bookings = await Booking.find({ property: propertyId })
-        .select('checkIn checkOut status')
+        .select('_id checkIn checkOut status paid source createdAt')
         .lean();
 
     for (const b of bookings) {
+        if (opts.excludeBookingId && String(b._id) === String(opts.excludeBookingId)) continue;
         if (!holdsInventory(b)) continue;
         const bIn  = parseBookingDate(b.checkIn);
         const bOut = parseBookingDate(b.checkOut);
@@ -248,7 +273,7 @@ async function isPropertyAvailable(propertyId, start, end) {
         return { available: false, reason: 'blocked' };
     }
 
-    if (property.stayflexi) {
+    if (property.stayflexi && !opts.skipStayflexi) {
         // Any SF error here throws — the caller returns 503. Never assume free.
         const soldOut = await sfSoldOutNights(String(property.stayflexi), from, to);
         if (requestedNights.some(n => soldOut.has(n))) {
