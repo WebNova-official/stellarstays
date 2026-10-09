@@ -1519,6 +1519,26 @@ async function executeSfBooking() {
     var nights = Math.max(1, Math.round((new Date(sfSelectedRoom.checkoutISO) - new Date(sfSelectedRoom.checkinISO)) / 86400000)) || 1;
     var hotelId = villaData.stayflexi.trim();
 
+    // 0) Re-check availability BEFORE touching Stayflexi. Creating the enquiry
+    // first (as this used to) meant a lost race left an orphaned hold on
+    // Stayflexi's calendar that blocked the dates for ~30 min.
+    try {
+        var chkRes = await fetch(getApiBase() + '/properties/' + encodeURIComponent(villaData._id)
+            + '/availability?checkIn=' + encodeURIComponent(sfSelectedRoom.checkinISO)
+            + '&checkOut=' + encodeURIComponent(sfSelectedRoom.checkoutISO));
+        var chk = await chkRes.json().catch(function(){ return {}; });
+        if (!chkRes.ok) throw new Error(chk.error || 'Could not verify availability');
+        if (!chk.available) {
+            alert('Sorry, these dates were just taken. Please choose different dates.');
+            resetBtn();
+            return;
+        }
+    } catch (err) {
+        alert('Could not confirm availability: ' + err.message + '\nPlease try again.');
+        resetBtn();
+        return;
+    }
+
     // 1) Create the enquiry on Stayflexi first — this holds the room against
     // their inventory. We confirm it later (recordExternalPayment, server-side)
     // once our own Razorpay payment succeeds, which is what blocks the dates
@@ -1546,6 +1566,13 @@ async function executeSfBooking() {
         return;
     }
 
+    // Releases the Stayflexi hold if we fail after creating it.
+    function rollbackSfEnquiry() {
+        if (!stayflexiBookingId) return;
+        fetch(getApiBase() + '/sf/booking-cancellation?bookingId=' + encodeURIComponent(stayflexiBookingId))
+            .catch(function(){});
+    }
+
     // 2) Save locally, linked to the Stayflexi enquiry.
     var bookingId;
     try {
@@ -1566,6 +1593,7 @@ async function executeSfBooking() {
         });
         if (bookRes.status === 409) {
             var conflict = await bookRes.json();
+            rollbackSfEnquiry();
             alert(conflict.message);
             resetBtn();
             return;
@@ -1577,6 +1605,7 @@ async function executeSfBooking() {
         var bookData = await bookRes.json();
         bookingId = bookData.booking?._id || bookData.bookingId;
     } catch (err) {
+        rollbackSfEnquiry();
         alert('Booking failed: ' + err.message);
         resetBtn();
         return;
@@ -1597,6 +1626,18 @@ async function executeSfBooking() {
         return;
     }
 
+    // Frees the dates (local booking + Stayflexi enquiry) if the guest closes
+    // Checkout or the payment fails, so they can retry immediately instead of
+    // being blocked by their own abandoned hold.
+    var paymentDone = false;
+    function releaseHold() {
+        if (paymentDone) return;
+        fetch(getApiBase() + '/payments/abandon', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId: bookingId })
+        }).catch(function(){});
+    }
+
     // Open Razorpay Checkout directly — no redirect to any Stayflexi page.
     var rzp = new Razorpay({
         key: order.keyId,
@@ -1608,6 +1649,7 @@ async function executeSfBooking() {
         prefill: { name: (firstName + ' ' + lastName).trim(), email: email, contact: phone },
         theme: { color: '#0f1f3d' },
         handler: async function (response) {
+            paymentDone = true;   // money taken: never release this hold from the client
             try {
                 var verifyRes = await fetch(getApiBase() + '/payments/verify', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1620,6 +1662,7 @@ async function executeSfBooking() {
                 });
                 var verifyData = await verifyRes.json();
                 if (!verifyData.success) throw new Error(verifyData.message || 'Payment verification failed');
+                paymentDone = true;
                 window.location.href = 'confirmation.html?bookingId=' + encodeURIComponent(bookingId);
             } catch (err) {
                 alert('Payment succeeded but confirmation failed: ' + err.message + '\n\nPlease contact us with your payment ID: ' + response.razorpay_payment_id);
@@ -1627,11 +1670,12 @@ async function executeSfBooking() {
             }
         },
         modal: {
-            ondismiss: function () { resetBtn(); }
+            ondismiss: function () { releaseHold(); resetBtn(); }
         }
     });
     rzp.on('payment.failed', function (resp) {
         alert('Payment failed: ' + (resp.error && resp.error.description ? resp.error.description : 'Please try again.'));
+        releaseHold();
         resetBtn();
     });
     rzp.open();
