@@ -9,6 +9,7 @@ function handle(fn) {
     return async (req, res) => {
         try {
             const data = await fn(req);
+            res.set("Cache-Control", "no-store");
             res.json(data);
         } catch (err) {
             console.error("[SF API] error:", err.message);
@@ -141,6 +142,7 @@ async function rawProxy(req, res) {
             body: req.method === "POST" ? JSON.stringify(req.body) : undefined,
         });
         const data = await r.json().catch(() => ({}));
+        res.set("Cache-Control", "no-store");   // live availability/rates: never cache
         res.status(r.status).json(data);
     } catch (err) {
         console.error("[SF raw proxy] error:", err.message);
