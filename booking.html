@@ -1372,13 +1372,30 @@ function sfBreakdownRows(cinISO, coutISO, total) {
     var wdN = 0, weN = 0;
     nights.forEach(function (d) { var dow = d.getDay(); if (dow === 5 || dow === 6) weN++; else wdN++; });
 
+    // The stored rates are only a SAMPLE (rateSyncService reads one Tuesday and
+    // one Saturday), while Stayflexi prices each date individually (seasonal
+    // rates, special dates). So when the whole stay is one kind of night, the
+    // real per-night rate is simply Stayflexi's total / nights -- exact, and no
+    // misleading "adjustment" line. Stored rates are only used to split a
+    // stay that mixes weekday and weekend nights.
+    if ((wdN === 0 || weN === 0) && total > 0) {
+        var perNight = total / nights.length;
+        if (Math.abs(perNight - Math.round(perNight)) < 0.01) {
+            return [{
+                label: nights.length + (weN ? ' weekend' : ' weekday') + ' night' + (nights.length > 1 ? 's' : '')
+                     + (weN ? ' (Fri/Sat)' : '') + ' \u00d7 ' + sfInr(perNight),
+                amount: total
+            }];
+        }
+    }
+
     var rows = [];
     if (wdN) rows.push({ label: wdN + ' weekday night' + (wdN > 1 ? 's' : '') + ' \u00d7 ' + sfInr(wd), amount: wdN * wd });
     if (weN) rows.push({ label: weN + ' weekend night' + (weN > 1 ? 's' : '') + ' (Fri/Sat) \u00d7 ' + sfInr(we), amount: weN * we });
 
     var computed = wdN * wd + weN * we;
     var diff = Math.round(total - computed);
-    if (diff !== 0) rows.push({ label: 'Rate adjustment (live pricing)', amount: diff });
+    if (diff !== 0) rows.push({ label: 'Seasonal / live rate adjustment', amount: diff });
     return rows;
 }
 
