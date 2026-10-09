@@ -2,47 +2,26 @@ const express  = require("express");
 const router   = express.Router();
 const Booking  = require("../models/Booking");
 
-// ── Date parsing helper ──
-// checkIn/checkOut are stored as plain strings (schema type: String), and
-// historically come in two different shapes depending on where they were
-// written from:
-//   "DD-MM-YYYY HH:MM:SS"  (from booking.html, built via fmtSfDate() to
-//                           match Stayflexi's expected request format)
-//   "YYYY-MM-DD..."        (ISO-style, e.g. from any other integration)
-//
-// Mongo's $lt/$gt on String fields does plain lexicographic comparison,
-// which is only chronologically correct for a fixed-width YEAR-FIRST format.
-// "DD-MM-YYYY" breaks the moment two dates fall in different months/years
-// (e.g. "01-10-2026" sorts BEFORE "25-09-2026" as a string, even though
-// Oct 1 is chronologically after Sep 25). That silently broke the overlap
-// check below. Instead of changing the stored format (which other pages —
-// confirmation.html, admin.html — and the Stayflexi API calls depend on),
-// we parse whatever format is present into a real Date for comparison only.
-function parseBookingDate(str) {
-    if (!str) return null;
-    str = String(str).trim();
+const availability = require("../services/availabilityService");
+const { parseBookingDate, startOfDay, nightCount, todayIST } = require("../utils/dates");
 
-    // ISO-ish: "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS"
-    var isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
-    if (isoMatch) {
-        return new Date(
-            +isoMatch[1], +isoMatch[2] - 1, +isoMatch[3],
-            +(isoMatch[4] || 0), +(isoMatch[5] || 0), +(isoMatch[6] || 0)
-        );
+// Serialises "check availability -> save" per property inside this process, so
+// two guests submitting the same dates at the same moment can't both pass the
+// check before either has saved. (Single Node instance only — if you ever run
+// several instances, replace with a unique index / transaction.)
+const propertyLocks = new Map();
+async function withPropertyLock(key, fn) {
+    const prev = propertyLocks.get(key) || Promise.resolve();
+    let release;
+    const gate = new Promise(r => { release = r; });
+    const tail = prev.then(() => gate);
+    propertyLocks.set(key, tail);
+    await prev;
+    try { return await fn(); }
+    finally {
+        release();
+        if (propertyLocks.get(key) === tail) propertyLocks.delete(key);
     }
-
-    // Day-first: "DD-MM-YYYY" or "DD-MM-YYYY HH:MM:SS" (also tolerate "/")
-    var dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
-    if (dmyMatch) {
-        return new Date(
-            +dmyMatch[3], +dmyMatch[2] - 1, +dmyMatch[1],
-            +(dmyMatch[4] || 0), +(dmyMatch[5] || 0), +(dmyMatch[6] || 0)
-        );
-    }
-
-    // Last resort — let JS try, but this may be unreliable for ambiguous formats.
-    var fallback = new Date(str);
-    return isNaN(fallback.getTime()) ? null : fallback;
 }
 
 // ── POST /api/bookings — create a new booking ──
@@ -63,44 +42,56 @@ router.post("/", async (req, res) => {
         if (!body.addonAmount && body.addonsTotal) body.addonAmount = body.addonsTotal;
         if (!body.baseAmount) body.baseAmount = (body.pricePerNight || 0) * (body.nights || 0);
 
-        // ── DATE CONFLICT CHECK ──
-        // Overlap rule: existing.checkIn < newCheckOut AND existing.checkOut > newCheckIn.
-        // Done in JS (not a Mongo date-range query) because the stored strings can be
-        // in either date format described above — parseBookingDate() normalises both
-        // to real Date objects before comparing, so the comparison is always
-        // chronologically correct regardless of which format a given record used.
-        const newCheckIn  = parseBookingDate(body.checkIn);
-        const newCheckOut = parseBookingDate(body.checkOut);
-
-        if (!newCheckIn || !newCheckOut) {
-            return res.status(400).json({
-                success: false,
-                message: "checkIn/checkOut must be valid dates."
-            });
+        // ── DATE VALIDATION + CONFLICT CHECK ──
+        // Uses the SAME availability logic as the public search and the admin
+        // calendar (availabilityService), compared by calendar DAY. The old
+        // inline check compared full timestamps, so a guest checking in on the
+        // morning another guest checks out ("22-09 00:00" vs "22-09 10:00")
+        // was rejected here even though search showed the villa as free.
+        const inDate  = parseBookingDate(body.checkIn);
+        const outDate = parseBookingDate(body.checkOut);
+        if (!inDate || !outDate) {
+            return res.status(400).json({ success: false, message: "checkIn/checkOut must be valid dates." });
         }
+        const from = startOfDay(inDate);
+        const to   = startOfDay(outDate);
+        if (to <= from) {
+            return res.status(400).json({ success: false, message: "Check-out must be after check-in." });
+        }
+        if (from < todayIST()) {
+            return res.status(400).json({ success: false, message: "Check-in cannot be in the past." });
+        }
+        if (!body.property) {
+            return res.status(400).json({ success: false, message: "property is required." });
+        }
+        body.nights = nightCount(from, to);   // never trust the client's night count
 
-        const existingBookings = await Booking.find({
-            property: body.property,
-            status: { $nin: ["cancelled", "Cancelled"] }
+        const saved = await withPropertyLock(String(body.property), async () => {
+            const result = await availability.isPropertyAvailable(body.property, from, to, {
+                // The client creates the Stayflexi enquiry BEFORE saving here, and that
+                // enquiry holds the room on SF's calendar — asking SF again would flag
+                // our own hold as sold out. SF was already checked before the enquiry.
+                skipStayflexi: !!body.stayflexiBookingId,
+            });
+            if (!result.available) {
+                const msg = {
+                    booked:    "Sorry, these dates were just booked. Please pick different dates.",
+                    blocked:   "Sorry, these dates are not available. Please pick different dates.",
+                    inactive:  "This property is not currently bookable.",
+                    not_found: "Property not found.",
+                }[result.reason] || "These dates are no longer available.";
+                return { conflict: true, status: result.reason === "not_found" ? 404 : 409, message: msg };
+            }
+            const booking = new Booking(body);
+            await booking.save();
+            return { booking };
         });
 
-        const clash = existingBookings.find(function (b) {
-            const bCheckIn  = parseBookingDate(b.checkIn);
-            const bCheckOut = parseBookingDate(b.checkOut);
-            if (!bCheckIn || !bCheckOut) return false;
-            return bCheckIn < newCheckOut && bCheckOut > newCheckIn;
-        });
-
-        if (clash) {
-            return res.status(409).json({
-                success: false,
-                message: `Property already booked from ${clash.checkIn} to ${clash.checkOut}. Please pick different dates.`
-            });
+        if (saved.conflict) {
+            return res.status(saved.status).json({ success: false, message: saved.message });
         }
+        const booking = saved.booking;
         // ── END CONFLICT CHECK ──
-
-        const booking = new Booking(body);
-        await booking.save();
 
         res.status(201).json({
             success:   true,
