@@ -1873,8 +1873,10 @@ async function checkAllRates() {
     };
     var extractRate = function(avail) {
         if (!avail) return 0;
-        if (avail.rate) return avail.rate;
-        if (avail.actualRate) return avail.actualRate;
+        // rate = post-discount, actualRate = undiscounted dashboard price; prefer the latter when higher
+        var _r = Number(avail.rate) || 0, _a = Number(avail.actualRate) || 0;
+        if (_a > _r) return _a;
+        if (_r) return _r;
         if (!avail.roomTypeMap) return 0;
         for (var rtId in avail.roomTypeMap) {
             var room = avail.roomTypeMap[rtId];
@@ -1942,7 +1944,7 @@ async function checkAllRates() {
     panel.innerHTML = '<div class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">'
         + '<div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">'
             + '<span class="text-sm font-black text-[#0f1f3d]">Rate Check — ' + okCount + '/' + results.length + ' OK</span>'
-            + '<span class="text-[10px] text-gray-400">Weekday: next Tue · Weekend: next Sat</span>'
+            + '<span class="text-[10px] text-gray-400">Weekday: lowest night, next 30 days · Weekend: lowest Fri/Sat</span>'
         + '</div>'
         + '<table class="w-full text-left"><thead><tr class="border-b border-gray-100 bg-gray-50/50">'
             + '<th class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase">Property</th>'
@@ -1996,7 +1998,7 @@ async function syncRatesNow() {
         panel.innerHTML = '<div class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">'
             + '<div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">'
                 + '<span class="text-sm font-black text-[#0f1f3d]">Sync Complete — ' + summary.updated + '/' + summary.checked + ' updated</span>'
-                + '<span class="text-[10px] text-gray-400">Weekday: next Tue · Weekend: next Sat</span>'
+                + '<span class="text-[10px] text-gray-400">Weekday: lowest night, next 30 days · Weekend: lowest Fri/Sat</span>'
             + '</div>'
             + '<table class="w-full text-left"><thead><tr class="border-b border-gray-100 bg-gray-50/50">'
                 + '<th class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase">Property</th>'
@@ -2267,8 +2269,10 @@ async function importSfHotel(hotel) {
             // ── Primary source: SF returns the lowest available rate for the
             // requested dates directly at the top level (rate / actualRate).
             // This reflects availability across ALL room types, not just one.
-            if (avail.rate) return avail.rate;
-            if (avail.actualRate) return avail.actualRate;
+            // rate = post-discount, actualRate = undiscounted dashboard price; prefer the latter when higher
+            var _r = Number(avail.rate) || 0, _a = Number(avail.actualRate) || 0;
+            if (_a > _r) return _a;
+            if (_r) return _r;
             // ── Fallback: dig into roomTypeMap. Only used if SF omits the
             // top-level fields. NOTE: this checks every room type, not just
             // the first — the first one alone may be stop-sold/restricted
