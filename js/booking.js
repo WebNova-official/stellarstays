@@ -37,6 +37,17 @@ async function sfLiveFetch(path) {
     if (!res.ok) throw new Error('SF API error ' + res.status);
     return res.json();
 }
+// StayFlexi's top-level `rate` is post-discount; `actualRate` is the undiscounted
+// dashboard price. Charge/show the dashboard price: use actualRate whenever it
+// is higher than rate. Same rule as backend/services/rateSyncService.js.
+function pickListRate(avail) {
+    if (!avail) return 0;
+    const rate = Number(avail.rate) || 0;
+    const actual = Number(avail.actualRate) || 0;
+    console.info('[rate] StayFlexi rate=' + rate + ' actualRate=' + actual);
+    if (actual > rate) return actual;
+    return rate;
+}
 function pad2(n) { return String(n).padStart(2, '0'); }
 function fmtSfDate(d) { return pad2(d.getDate()) + '-' + pad2(d.getMonth() + 1) + '-' + d.getFullYear(); }
 function fmtSfDateTime(d, time) { return fmtSfDate(d) + ' ' + time; }
@@ -351,7 +362,7 @@ async function refreshLiveRate(checkInDate, checkOutDate) {
         // This reflects availability across ALL room types and already
         // factors in SF's own weekday/weekend pricing calendar — not just
         // the first room type in roomTypeMap, which may be restricted.
-        let liveRate = avail.rate || avail.actualRate || 0;
+        let liveRate = pickListRate(avail);
         if (!liveRate && avail.roomTypeMap) {
             for (const rtId in avail.roomTypeMap) {
                 const room = avail.roomTypeMap[rtId];
