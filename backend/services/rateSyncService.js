@@ -16,11 +16,18 @@ function ymdLocal(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-
 function fmt(d, time) {
     return pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + d.getFullYear() + " " + time;
 }
-// Same extraction logic as admin.html's checkAllRates(), kept in one place now.
+// StayFlexi's top-level `rate` is the price AFTER its configured discount
+// (promo / rate-plan / direct-booking discount); `actualRate` is the
+// undiscounted price that the StayFlexi dashboard calendar shows. The website
+// is meant to match the dashboard, so prefer the undiscounted figure whenever
+// StayFlexi supplies one that is higher than `rate`. No percentage is ever
+// added or removed here — both numbers come straight from StayFlexi.
 function extractRate(avail) {
     if (!avail) return 0;
-    if (avail.rate) return avail.rate;
-    if (avail.actualRate) return avail.actualRate;
+    const rate = Number(avail.rate) || 0;
+    const actual = Number(avail.actualRate) || 0;
+    if (actual > rate) return actual;
+    if (rate) return rate;
     if (!avail.roomTypeMap) return 0;
     for (const rtId in avail.roomTypeMap) {
         const room = avail.roomTypeMap[rtId];
@@ -81,7 +88,7 @@ async function fetchRatesForHotel(hotelId) {
             const resp = await sf.getHotelDetailAdvanced(
                 fmt(night, "14:00:00"), fmt(out, "12:00:00"), 0, hotelId
             );
-            return { night, rate: extractRate(resp), error: null };
+            return { night, rate: extractRate(resp), raw: { rate: resp && resp.rate, actualRate: resp && resp.actualRate }, error: null };
         } catch (e) {
             return { night, rate: 0, error: e.message };
         }
@@ -95,16 +102,18 @@ async function fetchRatesForHotel(hotelId) {
         nightsPriced: 0,
     };
 
-    probes.forEach(({ night, rate }) => {
+    probes.forEach(({ night, rate, raw }) => {
         if (!rate) return;
         result.nightsPriced++;
         if (!result.weekday || rate < result.weekday) {
             result.weekday = rate;
             result.weekdayNight = night;
+            result.weekdayRaw = raw;
         }
         if (isWeekendNight(night) && (!result.weekend || rate < result.weekend)) {
             result.weekend = rate;
             result.weekendNight = night;
+            result.weekendRaw = raw;
         }
     });
 
@@ -132,8 +141,10 @@ async function syncAllRates() {
             hotelId,
             oldPrice: property.pricePerNight,
             oldWeekendRate: property.weekendRate,
-            newPrice: rates.weekday || null,
-            newWeekendRate: rates.weekend || null,
+            newPrice: rates.weekday ? Math.round(rates.weekday) : null,
+            newWeekendRate: rates.weekend ? Math.round(rates.weekend) : null,
+            rawWeekday: rates.weekdayRaw || null,
+            rawWeekend: rates.weekendRaw || null,
             lowestNight: rates.weekdayNight ? ymdLocal(rates.weekdayNight) : null,
             lowestWeekendNight: rates.weekendNight ? ymdLocal(rates.weekendNight) : null,
             nightsScanned: rates.nightsScanned,
