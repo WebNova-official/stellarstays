@@ -3,6 +3,7 @@ const Property  = require("../models/Property");
 const cloudinary = require("cloudinary").v2;
 const availability = require("../services/availabilityService");
 const { parseYMD, startOfDay, nightCount, todayIST } = require("../utils/dates");
+const { guestPolicyFor } = require("../utils/guestPricing");
 
 // Upper bound on an online stay. Anything longer is almost always a typo or a
 // scraper walking the calendar, and it makes the Stayflexi window huge.
@@ -243,7 +244,9 @@ router.get("/:id", async (req, res) => {
         const property = await Property.findById(req.params.id);
         if (!property) return res.status(404).json({ message: "Property not found" });
         res.set("Cache-Control", "no-store");
-        res.json(property);
+        // guestPolicy = the same base occupancy / extra-guest fee / max guests the
+        // booking endpoint enforces, so booking.html shows exactly what's charged.
+        res.json({ ...property.toObject(), guestPolicy: guestPolicyFor(property) });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
