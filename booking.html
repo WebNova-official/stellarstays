@@ -463,6 +463,12 @@
                 <div class="flex justify-between"><span class="text-gray-500">Rate Plan</span><span id="sfModalPlan" class="font-bold text-[#0f1f3d]">—</span></div>
                 <div class="flex justify-between"><span class="text-gray-500">Dates</span><span id="sfModalDates" class="font-bold text-[#0f1f3d]">—</span></div>
                 <div id="sfModalBreakdown" class="space-y-1"></div>
+                <div id="sfModalExtraRow" class="hidden">
+                    <div class="flex justify-between gap-3">
+                        <span id="sfModalExtraLabel" class="text-gray-500">Extra guests</span>
+                        <span id="sfModalExtraAmt" class="font-bold text-[#0f1f3d] shrink-0">₹0</span>
+                    </div>
+                </div>
                 <div class="flex justify-between border-t border-amber-200 pt-1 mt-1">
                     <span class="font-black text-[#0f1f3d]">Total</span><span id="sfModalTotal" class="font-black text-emerald-600">₹0</span>
                 </div>
@@ -529,6 +535,7 @@
                         <button type="button" onclick="changeSfGuests('children',1)" class="guest-counter-btn w-7 h-7 rounded-full border border-gray-200 bg-white flex items-center justify-center text-gray-600 font-bold text-sm transition">+</button>
                     </div>
                 </div>
+                <p id="sfGuestNote" class="text-[10px] font-semibold text-gray-400 leading-snug pt-1"></p>
             </div>
 
             <!-- Payment — Razorpay only, no pay-at-hotel option -->
@@ -686,7 +693,14 @@ document.addEventListener('keydown', function(e) {
 
 // Guest state
 const guests = { adults: 2, children: 0, infants: 0 };
-let MAX_GUESTS = 20;
+
+// Guest rules. The REAL values come from the server with the property
+// (GET /api/properties/:id -> guestPolicy), which is the same module the
+// booking endpoint enforces — so what's quoted here is what's charged.
+// Base price covers `baseOccupancy` guests; each extra guest costs
+// `extraGuestFee` ONCE for the whole stay (not per night); `maxGuests` is the
+// villa's capacity. These defaults only apply until the property loads.
+var guestPolicy = { baseOccupancy: 8, extraGuestFee: 1000, maxGuests: 8, maxExtraAmount: 0 };
 
 let checkIn = '', checkOut = '';
 
@@ -973,14 +987,32 @@ async function loadBookingPage() {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         villaData = await res.json();
 
+        // Guest rules for this villa (falls back to the stored max if an older
+        // server doesn't send guestPolicy). Then pull the URL's guest count back
+        // inside the villa's capacity, so a hand-edited ?adults=30 can't start
+        // the booking over the limit.
+        var maxG = parseInt(villaData.guests, 10) || guestPolicy.baseOccupancy;
+        guestPolicy = villaData.guestPolicy || {
+            baseOccupancy: guestPolicy.baseOccupancy,
+            extraGuestFee: guestPolicy.extraGuestFee,
+            maxGuests: maxG,
+            maxExtraAmount: Math.max(0, maxG - guestPolicy.baseOccupancy) * guestPolicy.extraGuestFee
+        };
+        if (guests.adults > guestPolicy.maxGuests) {
+            guests.adults = guestPolicy.maxGuests;
+            sfGuests.adults = guests.adults;
+            var adultsLbl = guests.adults + ' Adult' + (guests.adults !== 1 ? 's' : '');
+            document.getElementById('detailVillaAdults').textContent = adultsLbl;
+            document.getElementById('navGuests').textContent         = adultsLbl;
+        }
+
         document.title = villaData.name + ' \u2014 StellarStays';
         document.getElementById('detailVillaName').textContent     = villaData.name || 'Boutique Stay';
         document.getElementById('detailVillaLocation').textContent = villaData.location || 'India';
         document.getElementById('detailVillaRating').textContent   = villaData.rating || '4.8';
         document.getElementById('detailVillaRating2').textContent  = villaData.rating || '4.8';
         document.getElementById('detailVillaBeds').textContent     = (villaData.bedrooms || '\u2014') + ' BHK';
-        document.getElementById('detailVillaGuests').textContent   = villaData.guests || '\u2014';
-        if (villaData.guests) MAX_GUESTS = parseInt(villaData.guests) || MAX_GUESTS;
+        document.getElementById('detailVillaGuests').textContent   = guestPolicy.maxGuests || villaData.guests || '\u2014';
         document.getElementById('detailVillaPets').textContent     = villaData.petsAllowed ? 'Allowed' : 'Not Allowed';
         document.getElementById('stickyRating').textContent        = villaData.rating || '4.8';
         var rateStr = '\u20b9' + (villaData.pricePerNight || 0).toLocaleString('en-IN');
@@ -1170,23 +1202,14 @@ async function loadBookingPage() {
         }
 
         // ── Live Stayflexi sync (only for SF-linked properties) ──
-        // Auto-fetch on load: max guests + real-time blocked dates.
-        // Any failure here silently falls back to stored Mongo values.
+        // Auto-fetch on load: real-time blocked dates.
+        // NOTE: the max guest count is deliberately NOT taken from Stayflexi any
+        // more. The villa's capacity is our own stored Property.guests ("Max
+        // Guests" in admin) — the booking endpoint enforces that exact number,
+        // so letting Stayflexi's occupancy override it here would show a limit
+        // the server then rejects.
         var sfLiveBlockedDates = [];
         if (sfHotelId) {
-            try {
-                var content = await sfFetch('/core/api/v1/beservice/hotelcontent?hotelId=' + sfHotelId);
-                var rt = content.roomTypeList && content.roomTypeList[0];
-                var liveGuests = rt ? parseInt(rt.maxOccupants || rt.maxPossible || 0) : 0;
-                if (liveGuests) {
-                    villaData.guests = liveGuests;
-                    MAX_GUESTS = liveGuests;
-                    document.getElementById('detailVillaGuests').textContent = liveGuests;
-                }
-            } catch (e) {
-                console.warn('SF hotel content fetch failed, using stored guest count:', e.message);
-            }
-
             var sfCalendarFetchFailed = false;
             try {
                 var today = new Date();
@@ -1495,7 +1518,12 @@ async function sfOnDatesChange(cin, cout) {
             var avail = combo ? combo.availableRooms : 0;
             if (avail < 1) return;
             (combo && combo.rates || []).slice(0,3).forEach(function(rate) {
-                var priceKey = sfGuests.adults + (sfGuests.children ? '+' + sfGuests.children : '');
+                // The base price covers up to guestPolicy.baseOccupancy guests. Look the
+                // price up for AT MOST that many, so any per-guest pricing Stayflexi has
+                // for larger groups can't be added on top of our own extra-guest charge.
+                var baseAdults   = Math.min(sfGuests.adults, guestPolicy.baseOccupancy);
+                var baseChildren = Math.min(sfGuests.children, Math.max(0, guestPolicy.baseOccupancy - baseAdults));
+                var priceKey = baseAdults + (baseChildren ? '+' + baseChildren : '');
                 var price = (rate.priceMap && rate.priceMap[priceKey]) || rate.price || 0;
                 if (price && (minPrice === null || price < minPrice)) minPrice = price;
                 html += '<div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 hover:border-amber-400 transition">'
@@ -1570,7 +1598,6 @@ function openSfBookingModal() {
     document.getElementById('sfModalRoom').textContent  = sfSelectedRoom.roomTypeName;
     document.getElementById('sfModalPlan').textContent  = sfSelectedRoom.ratePlanName;
     document.getElementById('sfModalDates').textContent = (checkIn||'') + ' → ' + (checkOut||'');
-    document.getElementById('sfModalTotal').textContent = '₹' + sfSelectedRoom.price.toLocaleString('en-IN');
     var mRows = sfBreakdownRows(sfSelectedRoom.checkinISO, sfSelectedRoom.checkoutISO, sfSelectedRoom.price);
     document.getElementById('sfModalBreakdown').innerHTML = (mRows || []).map(function (r) {
         return '<div class="flex justify-between gap-3"><span class="text-gray-500">' + r.label + '</span><span class="font-bold text-[#0f1f3d] shrink-0">'
@@ -1578,6 +1605,7 @@ function openSfBookingModal() {
     }).join('');
     document.getElementById('sfAdultsCount').textContent   = sfGuests.adults;
     document.getElementById('sfChildrenCount').textContent = sfGuests.children;
+    updateSfModalTotals();
     document.getElementById('sfBookingModal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 }
@@ -1587,11 +1615,65 @@ function closeSfBookingModal() {
     document.body.style.overflow = '';
 }
 
+// Extra-guest charge for the current headcount: guests above the base
+// occupancy, ONCE for the whole booking (not multiplied by nights).
+// Mirrors backend/utils/guestPricing.js, which is what the server enforces.
+function sfExtraGuestCharge() {
+    var total = sfGuests.adults + sfGuests.children;
+    var extra = Math.max(0, total - guestPolicy.baseOccupancy);
+    return { totalGuests: total, extraGuests: extra, amount: extra * guestPolicy.extraGuestFee };
+}
+
+// Refreshes everything in the booking modal that depends on the guest count:
+// the extra-guest line, the total, and the note under the counters.
+function updateSfModalTotals() {
+    if (!sfSelectedRoom) return;
+    var c = sfExtraGuestCharge();
+    var base = sfSelectedRoom.price || 0;
+
+    var row = document.getElementById('sfModalExtraRow');
+    if (row) {
+        row.classList.toggle('hidden', c.extraGuests === 0);
+        document.getElementById('sfModalExtraLabel').textContent =
+            c.extraGuests + ' extra guest' + (c.extraGuests > 1 ? 's' : '')
+            + ' × ' + sfInr(guestPolicy.extraGuestFee) + ' (one-time)';
+        document.getElementById('sfModalExtraAmt').textContent = sfInr(c.amount);
+    }
+    document.getElementById('sfModalTotal').textContent = sfInr(base + c.amount);
+
+    var note = document.getElementById('sfGuestNote');
+    if (note) {
+        note.textContent = c.extraGuests > 0
+            ? c.totalGuests + ' guests — ' + c.extraGuests + ' above the ' + guestPolicy.baseOccupancy + ' included. Max ' + guestPolicy.maxGuests + ' for this villa.'
+            : 'Price includes up to ' + guestPolicy.baseOccupancy + ' guests. Each additional guest is ' + sfInr(guestPolicy.extraGuestFee)
+              + ' for the whole stay (not per night). Max ' + guestPolicy.maxGuests + ' guests.';
+    }
+}
+
 function changeSfGuests(type, delta) {
-    if (type === 'adults')   sfGuests.adults   = Math.max(1, sfGuests.adults + delta);
-    if (type === 'children') sfGuests.children = Math.max(0, sfGuests.children + delta);
+    var nextAdults   = sfGuests.adults   + (type === 'adults'   ? delta : 0);
+    var nextChildren = sfGuests.children + (type === 'children' ? delta : 0);
+    nextAdults   = Math.max(1, nextAdults);
+    nextChildren = Math.max(0, nextChildren);
+
+    // Never let the headcount go above the villa's capacity.
+    if (delta > 0 && nextAdults + nextChildren > guestPolicy.maxGuests) {
+        var note = document.getElementById('sfGuestNote');
+        if (note) {
+            note.textContent = 'This villa allows a maximum of ' + guestPolicy.maxGuests + ' guests.';
+            note.classList.remove('text-gray-400'); note.classList.add('text-red-500');
+            setTimeout(function () {
+                note.classList.remove('text-red-500'); note.classList.add('text-gray-400');
+                updateSfModalTotals();
+            }, 2500);
+        }
+        return;
+    }
+    sfGuests.adults   = nextAdults;
+    sfGuests.children = nextChildren;
     document.getElementById('sfAdultsCount').textContent   = sfGuests.adults;
     document.getElementById('sfChildrenCount').textContent = sfGuests.children;
+    updateSfModalTotals();
 }
 
 async function executeSfBooking() {
@@ -1606,6 +1688,15 @@ async function executeSfBooking() {
     var zipcode   = document.getElementById('sfGuestZip')?.value.trim() || '';
     var country   = document.getElementById('sfGuestCountry')?.value.trim() || 'India';
     if (!firstName || !email || !phone) { alert('Please fill in your name, email, and phone.'); return; }
+
+    // Guest limit — checked before anything is sent to Stayflexi or saved. The
+    // server enforces the same limit independently, so this is the friendly
+    // early check, not the only one.
+    var extraCharge = sfExtraGuestCharge();
+    if (extraCharge.totalGuests > guestPolicy.maxGuests) {
+        alert('This villa allows a maximum of ' + guestPolicy.maxGuests + ' guests. Please reduce the guest count.');
+        return;
+    }
 
     var btn = document.getElementById('sfBookSubmitBtn');
     btn.disabled = true;
@@ -1689,8 +1780,13 @@ async function executeSfBooking() {
                 checkIn: sfSelectedRoom.checkin, checkOut: sfSelectedRoom.checkout, nights: nights,
                 adults: sfGuests.adults, children: sfGuests.children, infants: 0,
                 pricePerNight: villaData.pricePerNight || 0,
+                // baseAmount is the Stayflexi room price; the extra-guest charge is added on
+                // top (once, not per night). The server recomputes the extra charge and the
+                // total itself — these are what the guest was shown.
                 baseAmount: sfSelectedRoom.price, addonAmount: 0, taxAmount: 0,
-                totalAmount: sfSelectedRoom.price, amount: sfSelectedRoom.price,
+                extraGuests: extraCharge.extraGuests, extraGuestAmount: extraCharge.amount,
+                totalAmount: sfSelectedRoom.price + extraCharge.amount,
+                amount: sfSelectedRoom.price + extraCharge.amount,
                 status: 'Pending', paid: false,
                 stayflexiBookingId: stayflexiBookingId, stayflexiHotelId: hotelId,
                 roomTypeId: sfSelectedRoom.roomTypeId, ratePlanId: sfSelectedRoom.ratePlanId
