@@ -17,9 +17,10 @@ const bookingSchema = new mongoose.Schema({
     children:   { type: Number, default: 0 },
     infants:    { type: Number, default: 0 },
 
-    // Extra-guest charge (see utils/guestPricing.js). Charged once per booking
-    // for guests above the base occupancy, NOT per night. Always computed by
-    // the server — whatever the client sends for these is ignored.
+    // Extra-guest charge (see utils/guestPricing.js): guests above the base
+    // occupancy, ₹1,000 per extra guest PER NIGHT. extraGuestAmount is the total
+    // for the whole stay. Always computed by the server — whatever the client
+    // sends for these is ignored.
     extraGuests:      { type: Number, default: 0 },
     extraGuestAmount: { type: Number, default: 0 },
 
