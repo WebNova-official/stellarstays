@@ -74,7 +74,8 @@ router.post("/", async (req, res) => {
         // endpoint directly. The villa's capacity is its own stored
         // Property.guests, and the extra-guest charge is worked out here and
         // added to the total — whatever the client sent for those is ignored.
-        // The charge is once per booking (not per night); see utils/guestPricing.js.
+        // The charge is per extra guest per night, using the night count the
+        // server just worked out above; see utils/guestPricing.js.
         if (!mongoose.isValidObjectId(body.property)) {
             return res.status(404).json({ success: false, message: "Property not found." });
         }
@@ -82,7 +83,7 @@ router.post("/", async (req, res) => {
         if (!villa) {
             return res.status(404).json({ success: false, message: "Property not found." });
         }
-        const priced = priceGuests(body, villa);
+        const priced = priceGuests(body, villa, body.nights);
         if (!priced.ok) {
             return res.status(400).json({ success: false, message: priced.message });
         }
