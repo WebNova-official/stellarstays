@@ -1,4 +1,4 @@
-// Verifies the guest limits and extra-guest pricing.
+// Verifies the guest limits and extra-guest pricing (₹1,000 per extra guest PER NIGHT, above 8 guests).
 //   1. utils/guestPricing.js — the rules themselves
 //   2. POST /api/bookings — the REAL route, called over HTTP, with only the
 //      database and the availability check stubbed
@@ -53,18 +53,21 @@ function check(label, actual, expected) {
 
 // ── 1. The rules ─────────────────────────────────────────────────────────────
 const A = PROPS[VILLA_A], B = PROPS[VILLA_B];
-const extra = (counts, villa) => { const r = gp.priceGuests(counts, villa); return r.ok ? r.extraGuestAmount : 'REJECTED'; };
+const extra = (counts, villa, nights = 1) => { const r = gp.priceGuests(counts, villa, nights); return r.ok ? r.extraGuestAmount : 'REJECTED'; };
 
 console.log('\n— Rules (utils/guestPricing.js) —');
-check('policy: Villa A max 12, max extra ₹4,000', [gp.guestPolicyFor(A).maxGuests, gp.guestPolicyFor(A).maxExtraAmount], [12, 4000]);
-check('policy: Villa B max 16, max extra ₹8,000', [gp.guestPolicyFor(B).maxGuests, gp.guestPolicyFor(B).maxExtraAmount], [16, 8000]);
+check('policy: Villa A max 12, max extra ₹4,000 per night', [gp.guestPolicyFor(A).maxGuests, gp.guestPolicyFor(A).maxExtraPerNight], [12, 4000]);
+check('policy: Villa B max 16, max extra ₹8,000 per night', [gp.guestPolicyFor(B).maxGuests, gp.guestPolicyFor(B).maxExtraPerNight], [16, 8000]);
 check('1 guest: no extra',                 extra({ adults: 1 }, A), 0);
 check('8 guests (base): no extra',         extra({ adults: 8 }, A), 0);
-check('9 guests: ₹1,000',                  extra({ adults: 9 }, A), 1000);
+check('9 guests, 1 night: ₹1,000',         extra({ adults: 9 }, A), 1000);
+check('9 guests, 3 nights: ₹3,000',        extra({ adults: 9 }, A, 3), 3000);
 check('10 guests: ₹2,000',                 extra({ adults: 10 }, B), 2000);
-check('Villa A, 12 guests (max): ₹4,000',  extra({ adults: 12 }, A), 4000);
+check('Villa A, 12 guests (max), 1 night: ₹4,000',  extra({ adults: 12 }, A), 4000);
+check('Villa A, 12 guests, 5 nights: ₹20,000',      extra({ adults: 12 }, A, 5), 20000);
 check('Villa A, 13 guests: rejected',      extra({ adults: 13 }, A), 'REJECTED');
-check('Villa B, 16 guests (max): ₹8,000',  extra({ adults: 16 }, B), 8000);
+check('Villa B, 16 guests (max), 1 night: ₹8,000',  extra({ adults: 16 }, B), 8000);
+check('Villa B, 16 guests, 5 nights: ₹40,000',      extra({ adults: 16 }, B, 5), 40000);
 check('Villa B, 17 guests: rejected',      extra({ adults: 17 }, B), 'REJECTED');
 check('adults+children both count (6+7=13 on A: rejected)', extra({ adults: 6, children: 7 }, A), 'REJECTED');
 check('adults+children both count (6+6=12 on A: ₹4,000)',   extra({ adults: 6, children: 6 }, A), 4000);
@@ -108,29 +111,34 @@ async function post(base, over) {
     let r, n;
 
     r = await post(base, { adults: 12 });
-    check('Villa A, 12 guests, 5 nights → extra ₹4,000 ONCE (not ₹20,000)',
-        [r.status, r.json.booking && r.json.booking.extraGuestAmount], [201, 4000]);
-    check('   …total = 50,000 + 4,000',
-        [r.json.booking.totalAmount, r.json.booking.amount, r.json.booking.nights], [54000, 54000, 5]);
+    check('Villa A, 12 guests, 5 nights → 4 extra × ₹1,000 × 5 nights = ₹20,000',
+        [r.status, r.json.booking && r.json.booking.extraGuestAmount], [201, 20000]);
+    check('   …total = 50,000 + 20,000',
+        [r.json.booking.totalAmount, r.json.booking.amount, r.json.booking.nights], [70000, 70000, 5]);
 
     r = await post(base, { adults: 12, checkOut: inDays(11) });   // 1 night
-    check('Villa A, 12 guests, 1 night → same ₹4,000 (nights make no difference)',
+    check('Villa A, 12 guests, 1 night → ₹4,000',
         [r.status, r.json.booking.extraGuestAmount, r.json.booking.nights], [201, 4000, 1]);
 
     r = await post(base, { adults: 12, checkOut: inDays(40) });   // 30 nights
-    check('Villa A, 12 guests, 30 nights → still ₹4,000',
-        [r.status, r.json.booking.extraGuestAmount, r.json.booking.nights], [201, 4000, 30]);
+    check('Villa A, 12 guests, 30 nights → ₹120,000 (scales with nights)',
+        [r.status, r.json.booking.extraGuestAmount, r.json.booking.nights], [201, 120000, 30]);
+
+    r = await post(base, { adults: 12, nights: 1 });              // client lies about nights
+    check('client claims nights:1 for a 5-night stay → server uses its own 5 nights',
+        [r.json.booking.nights, r.json.booking.extraGuestAmount], [5, 20000]);
 
     r = await post(base, { adults: 8 });
     check('8 guests → no extra, total unchanged',
         [r.status, r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [201, 0, 50000]);
 
     r = await post(base, { adults: 9 });
-    check('9 guests → ₹1,000', [r.status, r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [201, 1000, 51000]);
+    check('9 guests, 5 nights → ₹1,000 × 5 = ₹5,000, total 55,000',
+        [r.status, r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [201, 5000, 55000]);
 
     r = await post(base, { property: VILLA_B, adults: 16 });
-    check('Villa B, 16 guests (max) → extra ₹8,000, total 58,000',
-        [r.status, r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [201, 8000, 58000]);
+    check('Villa B, 16 guests (max), 5 nights → ₹8,000 × 5 = ₹40,000, total 90,000',
+        [r.status, r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [201, 40000, 90000]);
 
     n = saved.length;
     r = await post(base, { adults: 13 });
@@ -149,22 +157,22 @@ async function post(base, over) {
         [r.status, saved.length === n], [400, true]);
 
     r = await post(base, { adults: 6, children: 6 });
-    check('Villa A, 6 adults + 6 children (12) → ₹4,000',
-        [r.status, r.json.booking.extraGuestAmount], [201, 4000]);
+    check('Villa A, 6 adults + 6 children (12), 5 nights → ₹20,000',
+        [r.status, r.json.booking.extraGuestAmount], [201, 20000]);
 
     // A client that lies must not get a discount
     r = await post(base, { adults: 12, extraGuestAmount: 0, extraGuests: 0, totalAmount: 1, amount: 1 });
-    check('client sends extraGuestAmount:0, totalAmount:1 → server still charges 54,000',
-        [r.status, r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [201, 4000, 54000]);
+    check('client sends extraGuestAmount:0, totalAmount:1 → server still charges 70,000',
+        [r.status, r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [201, 20000, 70000]);
 
     r = await post(base, { adults: 12, extraGuestAmount: 999999, totalAmount: 999999 });
-    check('client inflates extra → server uses its own ₹4,000',
-        [r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [4000, 54000]);
+    check('client inflates extra → server uses its own ₹20,000',
+        [r.json.booking.extraGuestAmount, r.json.booking.totalAmount], [20000, 70000]);
 
     // Add-ons / tax still add up, with the extra on top
     r = await post(base, { adults: 10, addonAmount: 9000, taxAmount: 1620 });
-    check('extra guests stack with add-ons and tax (50,000+9,000+1,620+2,000)',
-        r.json.booking.totalAmount, 62620);
+    check('extra guests stack with add-ons and tax (50,000+9,000+1,620+10,000)',
+        r.json.booking.totalAmount, 70620);
 
     n = saved.length;
     r = await post(base, { adults: 0 });
