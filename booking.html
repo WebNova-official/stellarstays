@@ -698,9 +698,9 @@ const guests = { adults: 2, children: 0, infants: 0 };
 // (GET /api/properties/:id -> guestPolicy), which is the same module the
 // booking endpoint enforces — so what's quoted here is what's charged.
 // Base price covers `baseOccupancy` guests; each extra guest costs
-// `extraGuestFee` ONCE for the whole stay (not per night); `maxGuests` is the
-// villa's capacity. These defaults only apply until the property loads.
-var guestPolicy = { baseOccupancy: 8, extraGuestFee: 1000, maxGuests: 8, maxExtraAmount: 0 };
+// `extraGuestFee` PER NIGHT; `maxGuests` is the villa's capacity.
+// These defaults only apply until the property loads.
+var guestPolicy = { baseOccupancy: 8, extraGuestFee: 1000, maxGuests: 8, maxExtraPerNight: 0 };
 
 let checkIn = '', checkOut = '';
 
@@ -996,7 +996,7 @@ async function loadBookingPage() {
             baseOccupancy: guestPolicy.baseOccupancy,
             extraGuestFee: guestPolicy.extraGuestFee,
             maxGuests: maxG,
-            maxExtraAmount: Math.max(0, maxG - guestPolicy.baseOccupancy) * guestPolicy.extraGuestFee
+            maxExtraPerNight: Math.max(0, maxG - guestPolicy.baseOccupancy) * guestPolicy.extraGuestFee
         };
         if (guests.adults > guestPolicy.maxGuests) {
             guests.adults = guestPolicy.maxGuests;
@@ -1615,13 +1615,19 @@ function closeSfBookingModal() {
     document.body.style.overflow = '';
 }
 
-// Extra-guest charge for the current headcount: guests above the base
-// occupancy, ONCE for the whole booking (not multiplied by nights).
+// Extra-guest charge for the current headcount: every guest above the base
+// occupancy costs extraGuestFee PER NIGHT, so it scales with the stay length.
 // Mirrors backend/utils/guestPricing.js, which is what the server enforces.
+function sfStayNights() {
+    if (!sfSelectedRoom) return 1;
+    return Math.max(1, Math.round((new Date(sfSelectedRoom.checkoutISO) - new Date(sfSelectedRoom.checkinISO)) / 86400000)) || 1;
+}
 function sfExtraGuestCharge() {
-    var total = sfGuests.adults + sfGuests.children;
-    var extra = Math.max(0, total - guestPolicy.baseOccupancy);
-    return { totalGuests: total, extraGuests: extra, amount: extra * guestPolicy.extraGuestFee };
+    var total  = sfGuests.adults + sfGuests.children;
+    var extra  = Math.max(0, total - guestPolicy.baseOccupancy);
+    var nights = sfStayNights();
+    var perNight = extra * guestPolicy.extraGuestFee;
+    return { totalGuests: total, extraGuests: extra, nights: nights, perNight: perNight, amount: perNight * nights };
 }
 
 // Refreshes everything in the booking modal that depends on the guest count:
@@ -1636,7 +1642,8 @@ function updateSfModalTotals() {
         row.classList.toggle('hidden', c.extraGuests === 0);
         document.getElementById('sfModalExtraLabel').textContent =
             c.extraGuests + ' extra guest' + (c.extraGuests > 1 ? 's' : '')
-            + ' × ' + sfInr(guestPolicy.extraGuestFee) + ' (one-time)';
+            + ' × ' + sfInr(guestPolicy.extraGuestFee)
+            + ' × ' + c.nights + ' night' + (c.nights > 1 ? 's' : '');
         document.getElementById('sfModalExtraAmt').textContent = sfInr(c.amount);
     }
     document.getElementById('sfModalTotal').textContent = sfInr(base + c.amount);
@@ -1646,7 +1653,7 @@ function updateSfModalTotals() {
         note.textContent = c.extraGuests > 0
             ? c.totalGuests + ' guests — ' + c.extraGuests + ' above the ' + guestPolicy.baseOccupancy + ' included. Max ' + guestPolicy.maxGuests + ' for this villa.'
             : 'Price includes up to ' + guestPolicy.baseOccupancy + ' guests. Each additional guest is ' + sfInr(guestPolicy.extraGuestFee)
-              + ' for the whole stay (not per night). Max ' + guestPolicy.maxGuests + ' guests.';
+              + ' per night. Max ' + guestPolicy.maxGuests + ' guests.';
     }
 }
 
@@ -1780,9 +1787,9 @@ async function executeSfBooking() {
                 checkIn: sfSelectedRoom.checkin, checkOut: sfSelectedRoom.checkout, nights: nights,
                 adults: sfGuests.adults, children: sfGuests.children, infants: 0,
                 pricePerNight: villaData.pricePerNight || 0,
-                // baseAmount is the Stayflexi room price; the extra-guest charge is added on
-                // top (once, not per night). The server recomputes the extra charge and the
-                // total itself — these are what the guest was shown.
+                // baseAmount is the Stayflexi room price; the extra-guest charge (per extra
+                // guest, per night) is added on top. The server recomputes the extra charge
+                // and the total itself — these are what the guest was shown.
                 baseAmount: sfSelectedRoom.price, addonAmount: 0, taxAmount: 0,
                 extraGuests: extraCharge.extraGuests, extraGuestAmount: extraCharge.amount,
                 totalAmount: sfSelectedRoom.price + extraCharge.amount,
