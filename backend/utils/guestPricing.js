@@ -7,13 +7,12 @@
 //
 // THE RULES
 //   • The villa's base price covers up to BASE_OCCUPANCY (8) guests.
-//   • Every guest above that costs EXTRA_GUEST_FEE (₹1,000) — charged ONCE for
-//     the whole booking, however many nights. 12 guests for 5 nights is
-//     4 extra × ₹1,000 = ₹4,000, not ₹20,000.
+//   • Every guest above that costs EXTRA_GUEST_FEE (₹1,000) PER NIGHT.
+//     12 guests for 5 nights = 4 extra × ₹1,000 × 5 nights = ₹20,000.
 //   • The most a villa can hold is its own `guests` field (Property.guests,
 //     editable in admin as "Max Guests"). A booking above it is rejected.
-//     Villa A (12) therefore tops out at ₹4,000 extra, Villa B (16) at ₹8,000,
-//     because the cap is simply (max − 8) × ₹1,000.
+//     Villa A (12) therefore tops out at ₹4,000 extra PER NIGHT, Villa B (16)
+//     at ₹8,000 per night, because the per-night cap is (max − 8) × ₹1,000.
 //
 // Guests are adults + children + infants (the same total admin.html shows).
 
@@ -43,7 +42,7 @@ function guestPolicyFor(property) {
         baseOccupancy:  BASE_OCCUPANCY,
         extraGuestFee:  EXTRA_GUEST_FEE,
         maxGuests,
-        maxExtraAmount: Math.max(0, maxGuests - BASE_OCCUPANCY) * EXTRA_GUEST_FEE,
+        maxExtraPerNight: Math.max(0, maxGuests - BASE_OCCUPANCY) * EXTRA_GUEST_FEE,
     };
 }
 
@@ -52,12 +51,13 @@ function guestPolicyFor(property) {
  *
  * @param {{adults?:any, children?:any, infants?:any}} counts  as sent by the client
  * @param {{guests?:number}} property  the villa (needs `guests` = max capacity)
+ * @param {number} nights  nights in the stay (the server's own count, never the client's)
  * @returns {{ok:false, message:string}
  *         | {ok:true, adults:number, children:number, infants:number,
- *            totalGuests:number, extraGuests:number, extraGuestAmount:number,
- *            policy:object}}
+ *            totalGuests:number, extraGuests:number, nights:number,
+ *            extraGuestPerNight:number, extraGuestAmount:number, policy:object}}
  */
-function priceGuests(counts, property) {
+function priceGuests(counts, property, nights) {
     const c = counts || {};
     const adults   = parseCount(c.adults,   1);
     const children = parseCount(c.children, 0);
@@ -81,11 +81,16 @@ function priceGuests(counts, property) {
         };
     }
 
-    // Once per booking — deliberately NOT multiplied by nights.
-    const extraGuests      = Math.max(0, totalGuests - policy.baseOccupancy);
-    const extraGuestAmount = extraGuests * policy.extraGuestFee;
+    // Per extra guest, per night.
+    const stayNights         = Math.max(1, Math.floor(Number(nights)) || 1);
+    const extraGuests        = Math.max(0, totalGuests - policy.baseOccupancy);
+    const extraGuestPerNight = extraGuests * policy.extraGuestFee;
+    const extraGuestAmount   = extraGuestPerNight * stayNights;
 
-    return { ok: true, adults, children, infants, totalGuests, extraGuests, extraGuestAmount, policy };
+    return {
+        ok: true, adults, children, infants, totalGuests, extraGuests,
+        nights: stayNights, extraGuestPerNight, extraGuestAmount, policy,
+    };
 }
 
 module.exports = {
