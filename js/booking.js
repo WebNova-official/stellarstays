@@ -1,609 +1,94 @@
-// ==========================================
-// STELLARSTAYS — BOOKING PAGE LOGIC
-// booking.js
-// ==========================================
+const mongoose = require("mongoose");
 
-let activeVilla = null;
-let selectedTotalNights = 0;
-let calendarInstance = null;
-let liveRateFailed = false; // true when a Stayflexi-linked property's live rate
-                             // fetch fails for the selected dates — blocks booking
-                             // instead of silently charging the stale stored price
+const bookingSchema = new mongoose.Schema({
+    property:     { type: mongoose.Schema.Types.ObjectId, ref: "Property" },
+    propertyName: { type: String },
 
-const CHEF_RATE_PER_DAY      = 4500;
-const BONFIRE_RATE_PER_NIGHT = 1500;
+    // Guest info
+    guestName:  { type: String, required: true },
+    guestEmail: { type: String, required: true },
+    guestPhone: { type: String, required: true },
 
-// ==========================================
-// API BASE — works for:
-//   • localhost:5500 (Live Server)  → http://localhost:5000/api
-//   • localhost:5000 (Node direct)  → /api
-//   • stellar-stays.onrender.com    → /api
-// ==========================================
-function getApiBase() {
-    const { hostname, port } = window.location;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return port === '5000' ? '/api' : 'http://localhost:5000/api';
+    // Stay details
+    checkIn:    { type: String, required: true },
+    checkOut:   { type: String, required: true },
+    nights:     { type: Number, required: true },
+    adults:     { type: Number, default: 1 },
+    children:   { type: Number, default: 0 },
+    infants:    { type: Number, default: 0 },
+
+    // Extra-guest charge (see utils/guestPricing.js). Charged once per booking
+    // for guests above the base occupancy, NOT per night. Always computed by
+    // the server — whatever the client sends for these is ignored.
+    extraGuests:      { type: Number, default: 0 },
+    extraGuestAmount: { type: Number, default: 0 },
+
+    // Pricing
+    pricePerNight: { type: Number, default: 0 },
+    baseAmount:    { type: Number, default: 0 },
+    addonChef:     { type: Boolean, default: false },
+    addonBonfire:  { type: Boolean, default: false },
+    addonAmount:   { type: Number, default: 0 },
+    taxAmount:     { type: Number, default: 0 },
+    totalAmount:   { type: Number, default: 0 },
+    amount:        { type: Number, default: 0 },
+    addons:        { type: [String], default: [] },
+
+    // Status — accepts both cases from different clients
+    status: {
+        type: String,
+        enum: ["pending", "confirmed", "cancelled", "completed",
+               "Pending", "Confirmed", "Cancelled", "Completed"],
+        default: "Pending"
+    },
+
+    // bookingRef is the human-readable reference (SS-XXXXXX)
+    // sparse:true means multiple null values are allowed while
+    // still enforcing uniqueness among non-null values
+    bookingRef: { type: String, unique: true, sparse: true },
+
+    // Where this booking came from. Bookings created through the public
+    // booking form are "website". Anything created another way (manual
+    // admin entry, phone booking, imported from a channel, etc.) should
+    // set this explicitly. Defaults to "website" since that's the only
+    // path that currently writes to this collection.
+    source: { type: String, default: "website" },
+
+    // Payment (Razorpay)
+    paid:               { type: Boolean, default: false },
+    razorpayOrderId:    { type: String },
+    razorpayPaymentId:  { type: String },
+
+    // Stayflexi (inventory sync) — the booking is created there as an
+    // "enquiry" up front so the room is held, then confirmed via
+    // recordExternalPayment once our own Razorpay payment succeeds. This is
+    // what makes the dates show as booked on Stayflexi's calendar.
+    stayflexiBookingId: { type: String },
+    stayflexiHotelId:   { type: String },
+    roomTypeId:         { type: String },
+    ratePlanId:         { type: String },
+
+    // Set when recordExternalPayment (confirming the SF enquiry into a real
+    // held reservation) fails after payment. When this is true, our own DB
+    // is the confirmed source of truth (see availabilityService.js) but
+    // Stayflexi's own calendar/OTAs may not know this night is taken yet —
+    // an admin needs to reconcile it manually on the Stayflexi dashboard.
+    // NEVER used to hide/release the booking from our own availability checks.
+    sfSyncFailed: { type: Boolean, default: false },
+    sfSyncError:  { type: String, default: "" },
+
+}, { timestamps: true });
+
+bookingSchema.pre("save", async function () {
+    if (!this.bookingRef) {
+        this.bookingRef = "SS-" + Math.random().toString(36).toUpperCase().slice(2, 8);
     }
-    return '/api';
-}
-
-// ==========================================
-// STAYFLEXI LIVE SYNC — only used when a property has
-// a Stayflexi Hotel ID set (activeVilla.stayflexi). Routes
-// through the backend proxy so the SF API key stays server-side.
-// ==========================================
-async function sfLiveFetch(path) {
-    const res = await fetch(`${getApiBase()}/sf/raw?path=` + encodeURIComponent(path));
-    if (!res.ok) throw new Error('SF API error ' + res.status);
-    return res.json();
-}
-// StayFlexi's top-level `rate` is post-discount; `actualRate` is the undiscounted
-// dashboard price. Charge/show the dashboard price: use actualRate whenever it
-// is higher than rate. Same rule as backend/services/rateSyncService.js.
-function pickListRate(avail) {
-    if (!avail) return 0;
-    const rate = Number(avail.rate) || 0;
-    const actual = Number(avail.actualRate) || 0;
-    console.info('[rate] StayFlexi rate=' + rate + ' actualRate=' + actual);
-    if (actual > rate) return actual;
-    return rate;
-}
-function pad2(n) { return String(n).padStart(2, '0'); }
-function fmtSfDate(d) { return pad2(d.getDate()) + '-' + pad2(d.getMonth() + 1) + '-' + d.getFullYear(); }
-function fmtSfDateTime(d, time) { return fmtSfDate(d) + ' ' + time; }
-
-// ── Date parsing (mirrors backend/utils/dates.js parseBookingDate) ──
-// Booking.checkIn/checkOut can be "DD-MM-YYYY HH:MM:SS" (written by this very
-// file via fmtSfDate) or ISO "YYYY-MM-DD...". Stayflexi's calendar also
-// returns DD-MM-YYYY. `new Date("05-10-2026")` is ambiguous across browsers —
-// this is the one place both formats get parsed correctly, so the calendar's
-// "is this date really booked" check never silently misreads a date.
-function parseAnyDate(str) {
-    if (!str) return null;
-    str = String(str).trim();
-    const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
-    if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3], +(iso[4] || 0), +(iso[5] || 0), +(iso[6] || 0));
-    const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
-    if (dmy) return new Date(+dmy[3], +dmy[2] - 1, +dmy[1], +(dmy[4] || 0), +(dmy[5] || 0), +(dmy[6] || 0));
-    const fallback = new Date(str);
-    return isNaN(fallback.getTime()) ? null : fallback;
-}
-function ymdLocal(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
-function startOfDayLocal(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-
-// ==========================================
-// INIT
-// ==========================================
-async function parseUrlAndPopulate() {
-    const urlParams   = new URLSearchParams(window.location.search);
-    const villaId     = urlParams.get('id');
-    const checkInStr  = urlParams.get('checkIn')  || '';
-    const checkOutStr = urlParams.get('checkOut') || '';
-    const adultsVal   = urlParams.get('adults')   || '1';
-    const childrenVal = urlParams.get('children') || '0';
-    const petsVal     = urlParams.get('pets')     || '0';
-
-    if (!villaId) {
-        alert("No property selected. Returning to listings.");
-        window.location.href = "index.html";
-        return;
+    if (!this.totalAmount && this.amount) this.totalAmount = this.amount;
+    if (!this.amount && this.totalAmount) this.amount = this.totalAmount;
+    if (this.addons && this.addons.length) {
+        this.addonChef    = this.addons.includes("Chef");
+        this.addonBonfire = this.addons.includes("Bonfire");
     }
+});
 
-    try {
-        const response = await fetch(`${getApiBase()}/properties/${villaId}`);
-        if (!response.ok) throw new Error('Property not found');
-        activeVilla = await response.json();
-    } catch (error) {
-        console.error('Error loading property:', error);
-        alert("Property not found. Returning to listings.");
-        window.location.href = "index.html";
-        return;
-    }
-
-    // Populate text fields
-    document.getElementById("detailVillaName").innerText     = activeVilla.name || "Unnamed Villa";
-    document.getElementById("detailVillaLocation").innerText = activeVilla.location || "Location Not Available";
-    document.getElementById("detailVillaRating").innerText   = (activeVilla.rating || 4.8).toFixed(1);
-    document.getElementById("detailVillaRating2").innerText  = (activeVilla.rating || 4.8).toFixed(1);
-    document.getElementById("detailVillaBeds").innerText     = `${activeVilla.bedrooms || 0} BHK`;
-    document.getElementById("detailVillaGuests").innerText   = `Max ${activeVilla.guests || 0} Guests`;
-    document.getElementById("stickyRatePrint").innerText     = `₹${(activeVilla.pricePerNight || 0).toLocaleString('en-IN')}`;
-    document.getElementById("stickyRating").innerText        = (activeVilla.rating || 4.8).toFixed(1);
-
-    const adultsNum   = parseInt(adultsVal);
-    const childrenNum = parseInt(childrenVal);
-    const petsNum     = parseInt(petsVal);
-    document.getElementById("detailVillaAdults").innerText =
-        `${adultsNum} Adult${adultsNum > 1 ? 's' : ''}${childrenNum > 0 ? ' + ' + childrenNum + ' Child' : ''}`;
-    document.getElementById("detailVillaPets").innerText =
-        petsNum > 0 ? `${petsNum} Pet${petsNum > 1 ? 's' : ''}` : 'No Pets';
-
-    // Map
-    const mapEl = document.getElementById("googleMapsEmbed");
-    if (mapEl) mapEl.src = activeVilla.mapUrl || "";
-
-    // Image gallery
-    const sliderWrapper = document.getElementById("sliderWrapper");
-    if (sliderWrapper) {
-        sliderWrapper.innerHTML = (activeVilla.gallery || []).map(imgSrc => `
-            <div class="swiper-slide">
-                <a href="${imgSrc}" class="glightbox" data-gallery="stellar-gallery">
-                    <img src="${imgSrc}" alt="${activeVilla.name}" class="w-full h-full object-cover cursor-zoom-in hover:brightness-95 transition" />
-                </a>
-            </div>
-        `).join('');
-
-        new Swiper('.mainVillaSlider', {
-            loop: true,
-            pagination: { el: '.swiper-pagination', clickable: true },
-            navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' },
-            autoplay: { delay: 4500, disableOnInteraction: false },
-        });
-        if (typeof GLightbox !== 'undefined') {
-            GLightbox({ selector: '.glightbox', touchNavigation: true, loop: true });
-        }
-    }
-
-    // Amenities
-    const amenityContainer = document.getElementById("amenityContainer");
-    if (amenityContainer) {
-        amenityContainer.innerHTML = (activeVilla.amenities || []).map(a => `
-            <div class="flex items-center gap-2.5 text-xs font-semibold text-gray-700 bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm hover:border-amber-200 transition">
-                <i class="fa-solid fa-square-check text-amber-500 text-base"></i> ${a}
-            </div>
-        `).join('');
-    }
-
-    // Reviews
-    const reviewsContainer = document.getElementById("reviewsContainer");
-    if (reviewsContainer) {
-        reviewsContainer.innerHTML = (activeVilla.reviews || []).map(rev => `
-            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-2.5">
-                <div class="flex justify-between items-center">
-                    <div>
-                        <h5 class="text-sm font-bold text-gray-900">${rev.author}</h5>
-                        <span class="text-[10px] text-gray-400 font-medium">${rev.date}</span>
-                    </div>
-                    <span class="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md flex items-center gap-1 border border-amber-100">
-                        <i class="fa-solid fa-star text-xs"></i> ${rev.score}
-                    </span>
-                </div>
-                <p class="text-xs text-gray-500 leading-relaxed italic">"${rev.text}"</p>
-            </div>
-        `).join('');
-    }
-
-    // FAQs
-    const faqContainer = document.getElementById("faqContainer");
-    if (faqContainer) {
-        faqContainer.innerHTML = (activeVilla.faqs || []).map(faq => `
-            <div class="faq-item bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden" onclick="toggleFaqPanel(this)">
-                <button class="w-full p-4 text-left flex justify-between items-center gap-4 text-sm font-bold text-[#0f1f3d] focus:outline-none">
-                    <span>${faq.q}</span>
-                    <i class="fa-solid fa-chevron-down text-xs text-gray-400 faq-icon transition-transform duration-300"></i>
-                </button>
-                <div class="faq-answer">
-                    <p class="px-4 pb-4 pt-1 text-xs text-gray-500 leading-relaxed border-t border-gray-50 bg-gray-50/50">${faq.a}</p>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // ── Fetch booked date ranges + admin-blocked dates to disable in calendar ──
-    // `disabledRanges` feeds flatpickr's `disable` option (unchanged — this is
-    // what actually stops a guest selecting the date). `reallyUnavailable` is a
-    // parallel set of the same nights, used only to decide *how a day is
-    // painted*: flatpickr also auto-disables every day before minDate:"today",
-    // and without this set that CSS can't tell "already passed" from
-    // "genuinely booked" — see the styling fix at the flatpickr init below.
-    let disabledRanges = [];
-    const reallyUnavailable = new Set();
-
-    function addUnavailableRange(fromStr, toDate) {
-        const from = startOfDayLocal(parseAnyDate(fromStr) || new Date(fromStr));
-        const to   = startOfDayLocal(toDate);
-        if (isNaN(from.getTime()) || isNaN(to.getTime())) return;
-        const cursor = new Date(from);
-        while (cursor <= to) {
-            reallyUnavailable.add(ymdLocal(cursor));
-            cursor.setDate(cursor.getDate() + 1);
-        }
-    }
-
-    try {
-        const bRes = await fetch(`${getApiBase()}/bookings`);
-        if (bRes.ok) {
-            const allBookings = await bRes.json();
-            const bookedRanges = allBookings
-                .filter(b =>
-                    String(b.property || b.propertyId) === String(activeVilla._id) &&
-                    !["cancelled", "Cancelled"].includes(b.status)
-                )
-                .map(b => {
-                    // Only the NIGHTS between checkIn and checkOut are occupied.
-                    // The checkOut date itself must stay selectable (guest leaves by
-                    // 10 AM, next guest can check in same day from 1 PM), so we
-                    // disable up to the day before checkOut, not checkOut itself.
-                    // Parsed with parseAnyDate() rather than `new Date(...)` since
-                    // checkOut can be in "DD-MM-YYYY HH:MM:SS" form, which the
-                    // native Date constructor does not reliably understand.
-                    const parsedOut = parseAnyDate(b.checkOut) || new Date(b.checkOut);
-                    const toDate = new Date(parsedOut);
-                    toDate.setDate(toDate.getDate() - 1);
-                    addUnavailableRange(b.checkIn, toDate);
-                    return { from: b.checkIn, to: toDate };
-                });
-            disabledRanges.push(...bookedRanges);
-        }
-    } catch (e) {
-        console.warn("Could not fetch booked ranges for calendar:", e);
-    }
-
-    // Also disable admin-blocked individual dates
-    if (activeVilla.blockedDates && activeVilla.blockedDates.length) {
-        disabledRanges.push(...activeVilla.blockedDates);
-        activeVilla.blockedDates.forEach(d => {
-            const parsed = parseAnyDate(d);
-            if (parsed) reallyUnavailable.add(ymdLocal(parsed));
-        });
-    }
-
-    // ── Live Stayflexi sync (only for SF-linked properties) ──
-    const sfHotelId = activeVilla.stayflexi;
-    if (sfHotelId) {
-        // Live max guests — overrides stored value if SF has current data
-        try {
-            const content = await sfLiveFetch('/core/api/v1/beservice/hotelcontent?hotelId=' + sfHotelId);
-            const rt = content.roomTypeList && content.roomTypeList[0];
-            const liveGuests = rt ? parseInt(rt.maxOccupants || rt.maxPossible || 0) : 0;
-            if (liveGuests) {
-                activeVilla.guests = liveGuests;
-                document.getElementById("detailVillaGuests").innerText = `Max ${liveGuests} Guests`;
-            }
-        } catch (e) {
-            console.warn('SF hotel content fetch failed, using stored guest count:', e.message);
-        }
-
-        // Live blocked dates from SF's real-time calendar (next 90 days)
-        try {
-            const today = new Date();
-            const future = new Date(); future.setDate(future.getDate() + 90);
-            const calendar = await sfLiveFetch('/core/api/v1/beservice/hotelcalendar/?hotelId=' + sfHotelId
-                + '&fromDate=' + fmtSfDate(today) + '&toDate=' + fmtSfDate(future));
-            const avail = (calendar.aggregate && calendar.aggregate.availableRoomCount) || [];
-            const sfBlocked = avail.filter(d => d.count === 0).map(d => d.date);
-            disabledRanges.push(...sfBlocked);
-            // sfBlocked dates come back as DD-MM-YYYY (Stayflexi's own format) —
-            // parseAnyDate() handles that, `new Date(...)` would not.
-            sfBlocked.forEach(d => {
-                const parsed = parseAnyDate(d);
-                if (parsed) reallyUnavailable.add(ymdLocal(parsed));
-            });
-        } catch (e) {
-            console.warn('SF calendar fetch failed, using stored blocked dates only:', e.message);
-        }
-    }
-
-    // Date picker — booked ranges disabled
-    calendarInstance = flatpickr("#dateRangePicker", {
-        mode: "range",
-        minDate: "today",
-        dateFormat: "d M Y",
-        defaultDate: (checkInStr && checkOutStr) ? [checkInStr, checkOutStr] : null,
-        disable: disabledRanges,
-        onChange: function(dates) { processStayDuration(dates); },
-        // flatpickr applies the same .flatpickr-disabled class to a day whether
-        // it's disabled for being genuinely booked OR simply for falling before
-        // minDate:"today" — CSS alone can't tell those apart, which is what made
-        // every already-passed day this month look "Booked" red. Tag the ones
-        // that are actually unavailable so CSS can paint only those red; a day
-        // that's merely in the past gets the plain muted "disabled" look.
-        onDayCreate: function(dObj, dStr, fp, dayElem) {
-            if (reallyUnavailable.has(ymdLocal(dayElem.dateObj))) {
-                dayElem.classList.add('day-unavailable');
-            }
-        }
-    });
-
-    if (checkInStr && checkOutStr) {
-        setTimeout(() => {
-            if (calendarInstance.selectedDates.length === 2) {
-                processStayDuration(calendarInstance.selectedDates);
-            }
-        }, 100);
-    } else {
-        calculateTotal();
-    }
-}
-
-// ==========================================
-// FAQ TOGGLE
-// ==========================================
-function toggleFaqPanel(element) {
-    const isActive = element.classList.contains("active");
-    document.querySelectorAll(".faq-item").forEach(item => item.classList.remove("active"));
-    if (!isActive) element.classList.add("active");
-}
-
-// ==========================================
-// DATE / NIGHTS CALCULATION
-// ==========================================
-function processStayDuration(dates) {
-    if (dates.length === 2) {
-        const ms = Math.abs(dates[1].getTime() - dates[0].getTime());
-        selectedTotalNights = Math.ceil(ms / (1000 * 60 * 60 * 24));
-    } else {
-        selectedTotalNights = 0;
-    }
-    liveRateFailed = false; // fresh date selection — clear any prior failure
-    calculateTotal();
-
-    // Live price for the exact selected dates (SF-linked properties only)
-    if (dates.length === 2 && activeVilla && activeVilla.stayflexi) {
-        refreshLiveRate(dates[0], dates[1]);
-    }
-}
-
-// ==========================================
-// LIVE PRICE — fetches Stayflexi's real-time rate for the
-// exact selected check-in/check-out, replacing the stored rate.
-// ==========================================
-async function refreshLiveRate(checkInDate, checkOutDate) {
-    const baseLabel = document.getElementById("baseLabel");
-    const prevLabel = baseLabel ? baseLabel.innerText : '';
-    try {
-        if (baseLabel) baseLabel.innerText = 'Fetching live price…';
-        const avail = await sfLiveFetch('/core/api/v1/beservice/hoteldetailadvanced?hotelId=' + activeVilla.stayflexi
-            + '&checkin=' + encodeURIComponent(fmtSfDateTime(checkInDate, '14:00:00'))
-            + '&checkout=' + encodeURIComponent(fmtSfDateTime(checkOutDate, '11:00:00'))
-            + '&discount=0');
-        // ── Primary source: SF returns the lowest available rate for the
-        // requested dates directly at the top level (rate / actualRate).
-        // This reflects availability across ALL room types and already
-        // factors in SF's own weekday/weekend pricing calendar — not just
-        // the first room type in roomTypeMap, which may be restricted.
-        let liveRate = pickListRate(avail);
-        if (!liveRate && avail.roomTypeMap) {
-            for (const rtId in avail.roomTypeMap) {
-                const room = avail.roomTypeMap[rtId];
-                const combo = room && room.combos && room.combos[0];
-                const price = combo && combo.rates && combo.rates[0] && combo.rates[0].price;
-                if (price) { liveRate = price; break; }
-            }
-        }
-        if (liveRate) {
-            activeVilla.pricePerNight = Math.round(liveRate);
-            document.getElementById("stickyRatePrint").innerText = `₹${activeVilla.pricePerNight.toLocaleString('en-IN')}`;
-            liveRateFailed = false;
-        } else {
-            // Stayflexi returned no sellable rate for these exact dates (stop-sell,
-            // closed-to-arrival, min-LOS, or sold out). Do NOT fall back to the
-            // stale stored price — that could under/over-charge the guest.
-            console.warn('Live rate returned no price for selected dates — blocking booking.');
-            liveRateFailed = true;
-        }
-    } catch (e) {
-        console.warn('Live rate fetch failed, blocking booking rather than using stale stored price:', e.message);
-        liveRateFailed = true;
-    } finally {
-        calculateTotal();
-    }
-}
-
-// ==========================================
-// WEEKDAY / WEEKEND NIGHTLY BREAKDOWN
-// Only used for properties WITHOUT a Stayflexi link — those get a single
-// live blended rate straight from Stayflexi's own calendar (which already
-// bakes in its own weekend pricing). Self-managed properties instead use
-// the pricePerNight / weekendRate fields set in the admin panel, applied
-// per night based on day of week. Friday & Saturday nights count as
-// "weekend" — the standard convention for Indian villa stays.
-// ==========================================
-function isWeekendNight(date) {
-    const dow = date.getDay(); // 0=Sun ... 6=Sat
-    return dow === 5 || dow === 6; // Friday, Saturday
-}
-
-function computeNightlyBreakdown(checkInDate, checkOutDate) {
-    let total = 0, weekdayNights = 0, weekendNights = 0;
-    const cursor = new Date(checkInDate);
-    while (cursor < checkOutDate) {
-        if (isWeekendNight(cursor)) {
-            total += (activeVilla.weekendRate || activeVilla.pricePerNight || 0);
-            weekendNights++;
-        } else {
-            total += (activeVilla.pricePerNight || 0);
-            weekdayNights++;
-        }
-        cursor.setDate(cursor.getDate() + 1);
-    }
-    return { total, weekdayNights, weekendNights };
-}
-
-// ==========================================
-// PRICE CALCULATION
-// ==========================================
-function calculateTotal() {
-    if (!activeVilla) return;
-
-    // Stayflexi-linked property, dates picked, but live rate couldn't be
-    // confirmed for those exact dates — block pricing/booking entirely
-    // rather than silently charging the stale stored price.
-    if (activeVilla.stayflexi && selectedTotalNights > 0 && liveRateFailed) {
-        document.getElementById("baseLabel").innerText = 'Rate unavailable for these dates';
-        document.getElementById("baseCost").innerText = '—';
-        document.getElementById("addonChefRow").classList.add("hidden");
-        document.getElementById("addonBonfireRow").classList.add("hidden");
-        document.getElementById("taxCost").innerText = '—';
-        document.getElementById("grandTotal").innerText = '—';
-        return;
-    }
-
-    let baseCost = 0;
-    let baseLabelText = 'Base Accommodation Fee';
-
-    if (selectedTotalNights > 0) {
-        if (activeVilla.stayflexi) {
-            // Stayflexi-linked property: refreshLiveRate() already pulled a
-            // blended nightly rate straight from SF's own calendar, which
-            // accounts for SF's own weekend pricing. Apply it flat.
-            baseCost = (activeVilla.pricePerNight || 0) * selectedTotalNights;
-            baseLabelText = `Base Stay (₹${(activeVilla.pricePerNight || 0).toLocaleString('en-IN')} × ${selectedTotalNights} Night${selectedTotalNights > 1 ? 's' : ''})`;
-        } else if (calendarInstance && calendarInstance.selectedDates.length === 2) {
-            // Self-managed property: split the stay into weekday/weekend
-            // nights using the admin panel's pricePerNight / weekendRate.
-            const [inDate, outDate] = calendarInstance.selectedDates;
-            const breakdown = computeNightlyBreakdown(inDate, outDate);
-            baseCost = breakdown.total;
-            const parts = [];
-            if (breakdown.weekdayNights) {
-                parts.push(`${breakdown.weekdayNights} night${breakdown.weekdayNights > 1 ? 's' : ''} @ ₹${(activeVilla.pricePerNight || 0).toLocaleString('en-IN')}`);
-            }
-            if (breakdown.weekendNights) {
-                parts.push(`${breakdown.weekendNights} weekend night${breakdown.weekendNights > 1 ? 's' : ''} @ ₹${(activeVilla.weekendRate || activeVilla.pricePerNight || 0).toLocaleString('en-IN')}`);
-            }
-            baseLabelText = `Base Stay (${parts.join(' + ')})`;
-        } else {
-            baseCost = (activeVilla.pricePerNight || 0) * selectedTotalNights;
-            baseLabelText = `Base Stay (₹${(activeVilla.pricePerNight || 0).toLocaleString('en-IN')} × ${selectedTotalNights} Night${selectedTotalNights > 1 ? 's' : ''})`;
-        }
-    }
-
-    document.getElementById("baseLabel").innerText = baseLabelText;
-    document.getElementById("baseCost").innerText = `₹${baseCost.toLocaleString('en-IN')}`;
-
-    let addons = 0;
-    if (document.getElementById("addonChef").checked && selectedTotalNights > 0) {
-        const chefCost = CHEF_RATE_PER_DAY * selectedTotalNights;
-        addons += chefCost;
-        document.getElementById("addonChefCost").innerText = `₹${chefCost.toLocaleString('en-IN')}`;
-        document.getElementById("addonChefRow").classList.remove("hidden");
-    } else {
-        document.getElementById("addonChefRow").classList.add("hidden");
-    }
-
-    if (document.getElementById("addonBonfire").checked && selectedTotalNights > 0) {
-        const bonfireCost = BONFIRE_RATE_PER_NIGHT * selectedTotalNights;
-        addons += bonfireCost;
-        document.getElementById("addonBonfireCost").innerText = `₹${bonfireCost.toLocaleString('en-IN')}`;
-        document.getElementById("addonBonfireRow").classList.remove("hidden");
-    } else {
-        document.getElementById("addonBonfireRow").classList.add("hidden");
-    }
-
-    const subtotal = baseCost + addons;
-    const gst      = Math.round(subtotal * 0.18);
-    const total    = subtotal + gst;
-
-    document.getElementById("taxCost").innerText    = `₹${gst.toLocaleString('en-IN')}`;
-    document.getElementById("grandTotal").innerText = `₹${total.toLocaleString('en-IN')}`;
-}
-
-// ==========================================
-// BOOKING SUBMIT
-// ==========================================
-async function executePaymentGateway() {
-    const name  = document.getElementById("guestName").value.trim();
-    const email = document.getElementById("guestEmail").value.trim();
-    const phone = document.getElementById("guestPhone").value.trim();
-
-    if (selectedTotalNights === 0) {
-        alert("Please select your check-in and check-out dates before proceeding.");
-        document.getElementById("dateRangePicker").focus();
-        return;
-    }
-    if (activeVilla.stayflexi && liveRateFailed) {
-        alert("We couldn't confirm a live rate for these dates (they may be sold out or restricted). Please pick different dates or contact us on WhatsApp to book.");
-        return;
-    }
-    if (!name)  { alert("Please enter your full name.");          document.getElementById("guestName").focus();  return; }
-    if (!email || !email.includes('@')) { alert("Please enter a valid email address."); document.getElementById("guestEmail").focus(); return; }
-    if (!phone || phone.replace(/\D/g, '').length < 10) { alert("Please enter a valid 10-digit WhatsApp number."); document.getElementById("guestPhone").focus(); return; }
-
-    const dates    = calendarInstance.selectedDates;
-
-    // ── Same rule as calculateTotal(): Stayflexi-linked properties charge
-    // the live blended rate flat; self-managed properties split by night
-    // using pricePerNight / weekendRate so the guest is charged exactly
-    // what's shown on screen.
-    const baseCost = activeVilla.stayflexi
-        ? (activeVilla.pricePerNight || 0) * selectedTotalNights
-        : computeNightlyBreakdown(dates[0], dates[1]).total;
-
-    let addonsTotal = 0;
-    const addons    = [];
-    if (document.getElementById("addonChef").checked)    { addons.push("Chef");    addonsTotal += CHEF_RATE_PER_DAY * selectedTotalNights; }
-    if (document.getElementById("addonBonfire").checked) { addons.push("Bonfire"); addonsTotal += BONFIRE_RATE_PER_NIGHT * selectedTotalNights; }
-    const gst    = Math.round((baseCost + addonsTotal) * 0.18);
-    const amount = baseCost + addonsTotal + gst;
-
-    // NEVER use .toISOString() on a flatpickr date here — it converts to UTC
-    // first, which rolls IST (and any UTC+) midnight back to the previous day,
-    // so the booking would be saved one night earlier than what the guest
-    // actually selected and saw on screen. ymdLocal() keeps the exact calendar
-    // day that was picked (same fix already applied in booking.html).
-    const checkIn  = dates[0] ? ymdLocal(dates[0]) : '';
-    const checkOut = dates[1] ? ymdLocal(dates[1]) : '';
-
-    const urlParams = new URLSearchParams(window.location.search);
-
-    const payload = {
-        propertyId:    activeVilla._id,
-        propertyName:  activeVilla.name,
-        guestName:     name,
-        guestEmail:    email,
-        guestPhone:    phone,
-        checkIn,
-        checkOut,
-        nights:        selectedTotalNights,
-        adults:        parseInt(urlParams.get('adults')   || '1'),
-        children:      parseInt(urlParams.get('children') || '0'),
-        pricePerNight: activeVilla.pricePerNight || 0,
-        baseAmount:    baseCost,
-        addons,
-        addonAmount:   addonsTotal,
-        addonsTotal,
-        taxAmount:     gst,
-        gst,
-        totalAmount:   amount,
-        amount,
-        status:        'Pending',
-        paid:          false,
-    };
-
-    const btn = document.querySelector('[onclick="executePaymentGateway()"]');
-    if (btn) { btn.disabled = true; btn.innerText = 'Processing…'; }
-
-    try {
-        const res = await fetch(`${getApiBase()}/bookings`, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(payload),
-        });
-
-        if (res.status === 409) {
-            const err = await res.json();
-            alert(err.message);
-            if (btn) { btn.disabled = false; btn.innerText = 'Confirm & Book'; }
-            return;
-        }
-
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || "Server error");
-        }
-
-        const data = await res.json();
-        const bookingId = data.booking?._id || data.bookingId || '';
-        window.location.href = `confirmation.html?bookingId=${bookingId}`;
-
-    } catch (err) {
-        alert("Could not save booking: " + err.message + "\n\nPlease ensure the server is running.");
-        if (btn) { btn.disabled = false; btn.innerText = 'Confirm & Book'; }
-    }
-}
-
-// ==========================================
-// INIT
-// ==========================================
-window.onload = () => { parseUrlAndPopulate(); };
+module.exports = mongoose.model("Booking", bookingSchema);
