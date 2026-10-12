@@ -1,159 +1,206 @@
-// routes/paymentRoutes.js
-// Our own payment flow: create a Razorpay order for a booking already saved
-// in our DB, then verify the signature Razorpay Checkout returns and mark
-// the booking paid — no Stayflexi payment redirect involved.
+const express  = require("express");
+const mongoose = require("mongoose");
+const router   = express.Router();
+const Booking  = require("../models/Booking");
+const Property = require("../models/Property");
 
-const router  = require("express").Router();
-const Booking = require("../models/Booking");
-const { createOrder, verifySignature } = require("../services/paymentService");
-const { sendBookingConfirmation }      = require("../services/mailService");
-const sf                               = require("../services/stayflexiService");
+const availability = require("../services/availabilityService");
+const { parseBookingDate, startOfDay, nightCount, todayIST } = require("../utils/dates");
+const { priceGuests } = require("../utils/guestPricing");
 
-// POST /api/payments/create-order  { bookingId }
-router.post("/create-order", async (req, res) => {
+// Serialises "check availability -> save" per property inside this process, so
+// two guests submitting the same dates at the same moment can't both pass the
+// check before either has saved. (Single Node instance only — if you ever run
+// several instances, replace with a unique index / transaction.)
+const propertyLocks = new Map();
+async function withPropertyLock(key, fn) {
+    const prev = propertyLocks.get(key) || Promise.resolve();
+    let release;
+    const gate = new Promise(r => { release = r; });
+    const tail = prev.then(() => gate);
+    propertyLocks.set(key, tail);
+    await prev;
+    try { return await fn(); }
+    finally {
+        release();
+        if (propertyLocks.get(key) === tail) propertyLocks.delete(key);
+    }
+}
+
+// ── POST /api/bookings — create a new booking ──
+router.post("/", async (req, res) => {
     try {
-        const { bookingId } = req.body;
-        const booking = await Booking.findById(bookingId);
-        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+        const body = { ...req.body };
 
-        const amount = booking.totalAmount || booking.amount;
-        if (!amount) return res.status(400).json({ success: false, message: "Booking has no amount" });
+        // map propertyId → property (ObjectId ref field in schema)
+        if (body.propertyId && !body.property) {
+            body.property = body.propertyId;
+        }
+        delete body.propertyId;
 
-        const order = await createOrder(amount, booking.bookingRef || booking._id);
-        booking.razorpayOrderId = order.id;
-        await booking.save();
+        // normalise amount fields
+        if (!body.totalAmount && body.amount) body.totalAmount = body.amount;
+        if (!body.amount && body.totalAmount)  body.amount = body.totalAmount;
+        if (!body.taxAmount  && body.gst)      body.taxAmount = body.gst;
+        if (!body.addonAmount && body.addonsTotal) body.addonAmount = body.addonsTotal;
+        if (!body.baseAmount) body.baseAmount = (body.pricePerNight || 0) * (body.nights || 0);
 
-        res.json({
-            success:  true,
-            orderId:  order.id,
-            amount:   order.amount,   // paise, echoed back for Checkout
-            currency: order.currency,
-            keyId:    (process.env.RAZORPAY_KEY_ID || "").trim(),
+        // ── DATE VALIDATION + CONFLICT CHECK ──
+        // Uses the SAME availability logic as the public search and the admin
+        // calendar (availabilityService), compared by calendar DAY. The old
+        // inline check compared full timestamps, so a guest checking in on the
+        // morning another guest checks out ("22-09 00:00" vs "22-09 10:00")
+        // was rejected here even though search showed the villa as free.
+        const inDate  = parseBookingDate(body.checkIn);
+        const outDate = parseBookingDate(body.checkOut);
+        if (!inDate || !outDate) {
+            return res.status(400).json({ success: false, message: "checkIn/checkOut must be valid dates." });
+        }
+        const from = startOfDay(inDate);
+        const to   = startOfDay(outDate);
+        if (to <= from) {
+            return res.status(400).json({ success: false, message: "Check-out must be after check-in." });
+        }
+        if (from < todayIST()) {
+            return res.status(400).json({ success: false, message: "Check-in cannot be in the past." });
+        }
+        if (!body.property) {
+            return res.status(400).json({ success: false, message: "property is required." });
+        }
+        body.nights = nightCount(from, to);   // never trust the client's night count
+
+        // ── GUEST LIMIT + EXTRA-GUEST CHARGE ──
+        // Enforced here, not just in booking.html: anyone can POST to this
+        // endpoint directly. The villa's capacity is its own stored
+        // Property.guests, and the extra-guest charge is worked out here and
+        // added to the total — whatever the client sent for those is ignored.
+        // The charge is once per booking (not per night); see utils/guestPricing.js.
+        if (!mongoose.isValidObjectId(body.property)) {
+            return res.status(404).json({ success: false, message: "Property not found." });
+        }
+        const villa = await Property.findById(body.property).select("guests").lean();
+        if (!villa) {
+            return res.status(404).json({ success: false, message: "Property not found." });
+        }
+        const priced = priceGuests(body, villa);
+        if (!priced.ok) {
+            return res.status(400).json({ success: false, message: priced.message });
+        }
+        body.adults           = priced.adults;
+        body.children         = priced.children;
+        body.infants          = priced.infants;
+        body.extraGuests      = priced.extraGuests;
+        body.extraGuestAmount = priced.extraGuestAmount;
+
+        // Total = base stay + add-ons + tax + extra-guest charge, summed here
+        // so the amount Razorpay is asked for always includes the extra guests.
+        const baseAmt  = Math.max(0, Number(body.baseAmount)  || 0);
+        const addonAmt = Math.max(0, Number(body.addonAmount) || 0);
+        const taxAmt   = Math.max(0, Number(body.taxAmount)   || 0);
+        body.baseAmount  = baseAmt;
+        body.addonAmount = addonAmt;
+        body.taxAmount   = taxAmt;
+        body.totalAmount = body.amount = baseAmt + addonAmt + taxAmt + priced.extraGuestAmount;
+
+        const saved = await withPropertyLock(String(body.property), async () => {
+            const result = await availability.isPropertyAvailable(body.property, from, to, {
+                // The client creates the Stayflexi enquiry BEFORE saving here, and that
+                // enquiry holds the room on SF's calendar — asking SF again would flag
+                // our own hold as sold out. SF was already checked before the enquiry.
+                skipStayflexi: !!body.stayflexiBookingId,
+            });
+            if (!result.available) {
+                const msg = {
+                    booked:    "Sorry, these dates were just booked. Please pick different dates.",
+                    blocked:   "Sorry, these dates are not available. Please pick different dates.",
+                    inactive:  "This property is not currently bookable.",
+                    not_found: "Property not found.",
+                }[result.reason] || "These dates are no longer available.";
+                return { conflict: true, status: result.reason === "not_found" ? 404 : 409, message: msg };
+            }
+            const booking = new Booking(body);
+            await booking.save();
+            return { booking };
+        });
+
+        if (saved.conflict) {
+            return res.status(saved.status).json({ success: false, message: saved.message });
+        }
+        const booking = saved.booking;
+        // ── END CONFLICT CHECK ──
+
+        res.status(201).json({
+            success:   true,
+            booking,
+            bookingId: booking._id,
         });
     } catch (err) {
-        // Razorpay SDK errors often don't have a plain .message — the real
-        // reason (e.g. "Authentication failed") lives in err.error.description.
-        const detail = err?.error?.description || err.message || "Unknown error";
-        console.error("Create Razorpay order error:", err?.error || err);
-        res.status(500).json({ success: false, message: detail });
+        console.error("Booking save error:", err);
+        res.status(400).json({ success: false, message: err.message });
     }
 });
 
-// POST /api/payments/verify  { bookingId, razorpay_order_id, razorpay_payment_id, razorpay_signature }
-router.post("/verify", async (req, res) => {
+// ── GET /api/bookings — list all bookings (admin panel + booking.html's
+// client-side "which nights are taken" check both read this) ──
+// no-store: this is the exact list booking.html filters client-side to
+// paint the customer calendar red. A cached copy here is how a guest can
+// see a night as bookable that was just booked by someone else.
+router.get("/", async (req, res) => {
     try {
-        const { bookingId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-        if (!bookingId || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-            return res.status(400).json({ success: false, message: "Missing payment fields" });
-        }
-
-        const valid = verifySignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
-        if (!valid) {
-            return res.status(400).json({ success: false, message: "Payment signature verification failed" });
-        }
-
-        const booking = await Booking.findByIdAndUpdate(
-            bookingId,
-            { paid: true, status: "Confirmed", razorpayPaymentId: razorpay_payment_id },
-            { new: true }
-        );
-        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
-
-        // Confirm the Stayflexi enquiry so the dates show as booked on their
-        // calendar. The guest's confirmation is never blocked on this — our
-        // own DB (updated above) is already the source of truth every part
-        // of this app reads from (see availabilityService.js). But a failure
-        // here must not be silent: if Stayflexi never gets the confirmation,
-        // ITS calendar (and any OTA it feeds) would keep showing the night
-        // as free. One retry absorbs a transient blip; if it still fails,
-        // the booking is flagged (sfSyncFailed) rather than just logged, so
-        // it surfaces in the admin calendar/booking list for manual
-        // reconciliation instead of silently drifting out of sync forever.
-        if (booking.stayflexiBookingId && booking.stayflexiHotelId) {
-            const sfPayload = {
-                hotel_id: parseInt(booking.stayflexiHotelId),
-                booking_id: booking.stayflexiBookingId,
-                booking_source: "CUSTOM_BE",
-                module_source: "CUSTOM_BE_PAYMENT",
-                amount: booking.totalAmount,
-                currency: "INR",
-                payment_gateway_id: razorpay_payment_id,
-                pg_name: "RAZORPAY",
-                requires_post_payment_confirmation: true,
-                notes: "",
-                gateway_message: "",
-                payment_type: "Card",
-                payment_issuer: "",
-                payment_mode: "ONLINE",
-                status: "SUCCESS",
-            };
-
-            (async () => {
-                try {
-                    await sf.recordExternalPayment(sfPayload);
-                    if (booking.sfSyncFailed) {
-                        await Booking.findByIdAndUpdate(booking._id, { sfSyncFailed: false, sfSyncError: "" });
-                    }
-                } catch (firstErr) {
-                    console.warn(`[SF recordExternalPayment] failed once for ${booking.stayflexiBookingId}, retrying:`, firstErr.message);
-                    try {
-                        await sf.recordExternalPayment(sfPayload);
-                        if (booking.sfSyncFailed) {
-                            await Booking.findByIdAndUpdate(booking._id, { sfSyncFailed: false, sfSyncError: "" });
-                        }
-                    } catch (secondErr) {
-                        console.error(`[SF recordExternalPayment] FAILED after retry for booking ${booking._id} `
-                            + `(stayflexiBookingId=${booking.stayflexiBookingId}):`, secondErr.message);
-                        await Booking.findByIdAndUpdate(booking._id, {
-                            sfSyncFailed: true,
-                            sfSyncError: secondErr.message || "Unknown error",
-                        }).catch(e => console.error("Could not flag sfSyncFailed on booking:", e.message));
-                    }
-                }
-            })();
-        } else {
-            console.warn(`Booking ${booking._id} has no stayflexiBookingId — dates will NOT block on Stayflexi's calendar.`);
-            await Booking.findByIdAndUpdate(booking._id, {
-                sfSyncFailed: true,
-                sfSyncError: "No Stayflexi enquiry was linked to this booking.",
-            }).catch(e => console.error("Could not flag sfSyncFailed on booking:", e.message));
-        }
-
-        // Fire-and-forget: don't block the guest's confirmation on email delivery.
-        sendBookingConfirmation(booking).catch(e =>
-            console.error("Booking confirmation email failed:", e.message)
-        );
-
-        res.json({ success: true, booking });
+        const bookings = await Booking.find().sort({ createdAt: -1 });
+        res.set("Cache-Control", "no-store");
+        res.json(bookings);
     } catch (err) {
-        console.error("Verify payment error:", err);
         res.status(500).json({ success: false, message: err.message });
     }
 });
 
-// POST /api/payments/abandon  { bookingId }
-// Called by booking.html when the guest closes Razorpay Checkout or the payment
-// fails. Releases the dates immediately (local booking -> Cancelled) and cancels
-// the Stayflexi enquiry, instead of leaving both holding the villa until they
-// time out. Only ever touches UNPAID bookings — a paid booking is never released.
-router.post("/abandon", async (req, res) => {
+// ── GET /api/bookings/:id — single booking (confirmation page) ──
+router.get("/:id", async (req, res) => {
     try {
-        const { bookingId } = req.body;
-        const booking = await Booking.findById(bookingId);
-        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
-        if (booking.paid) return res.json({ success: true, released: false, reason: "already_paid" });
-
-        booking.status = "Cancelled";
-        await booking.save();
-
-        if (booking.stayflexiBookingId) {
-            sf.cancelBooking(booking.stayflexiBookingId).catch(e =>
-                console.warn(`[abandon] SF enquiry cancel failed for ${booking.stayflexiBookingId}:`, e.message)
-            );
-        }
-        res.json({ success: true, released: true });
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) return res.status(404).json({ success: false, message: "Not found" });
+        res.set("Cache-Control", "no-store");
+        res.json(booking);
     } catch (err) {
-        console.error("Abandon booking error:", err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── PATCH /api/bookings/:id/status — admin approve/cancel ──
+router.patch("/:id/status", async (req, res) => {
+    try {
+        const { status } = req.body;
+        const booking = await Booking.findByIdAndUpdate(
+            req.params.id, { status }, { new: true }
+        );
+        if (!booking) return res.status(404).json({ success: false, message: "Not found" });
+        res.json({ success: true, booking });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── PUT /api/bookings/:id — admin full update ──
+router.put("/:id", async (req, res) => {
+    try {
+        const booking = await Booking.findByIdAndUpdate(
+            req.params.id, req.body, { new: true }
+        );
+        if (!booking) return res.status(404).json({ success: false, message: "Not found" });
+        res.json(booking);
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── DELETE /api/bookings/:id — admin delete ──
+router.delete("/:id", async (req, res) => {
+    try {
+        const booking = await Booking.findByIdAndDelete(req.params.id);
+        if (!booking) return res.status(404).json({ success: false, message: "Not found" });
+        res.json({ success: true });
+    } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 });
