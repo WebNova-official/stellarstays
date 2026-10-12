@@ -1,9 +1,12 @@
 const express  = require("express");
+const mongoose = require("mongoose");
 const router   = express.Router();
 const Booking  = require("../models/Booking");
+const Property = require("../models/Property");
 
 const availability = require("../services/availabilityService");
 const { parseBookingDate, startOfDay, nightCount, todayIST } = require("../utils/dates");
+const { priceGuests } = require("../utils/guestPricing");
 
 // Serialises "check availability -> save" per property inside this process, so
 // two guests submitting the same dates at the same moment can't both pass the
@@ -65,6 +68,39 @@ router.post("/", async (req, res) => {
             return res.status(400).json({ success: false, message: "property is required." });
         }
         body.nights = nightCount(from, to);   // never trust the client's night count
+
+        // ── GUEST LIMIT + EXTRA-GUEST CHARGE ──
+        // Enforced here, not just in booking.html: anyone can POST to this
+        // endpoint directly. The villa's capacity is its own stored
+        // Property.guests, and the extra-guest charge is worked out here and
+        // added to the total — whatever the client sent for those is ignored.
+        // The charge is once per booking (not per night); see utils/guestPricing.js.
+        if (!mongoose.isValidObjectId(body.property)) {
+            return res.status(404).json({ success: false, message: "Property not found." });
+        }
+        const villa = await Property.findById(body.property).select("guests").lean();
+        if (!villa) {
+            return res.status(404).json({ success: false, message: "Property not found." });
+        }
+        const priced = priceGuests(body, villa);
+        if (!priced.ok) {
+            return res.status(400).json({ success: false, message: priced.message });
+        }
+        body.adults           = priced.adults;
+        body.children         = priced.children;
+        body.infants          = priced.infants;
+        body.extraGuests      = priced.extraGuests;
+        body.extraGuestAmount = priced.extraGuestAmount;
+
+        // Total = base stay + add-ons + tax + extra-guest charge, summed here
+        // so the amount Razorpay is asked for always includes the extra guests.
+        const baseAmt  = Math.max(0, Number(body.baseAmount)  || 0);
+        const addonAmt = Math.max(0, Number(body.addonAmount) || 0);
+        const taxAmt   = Math.max(0, Number(body.taxAmount)   || 0);
+        body.baseAmount  = baseAmt;
+        body.addonAmount = addonAmt;
+        body.taxAmount   = taxAmt;
+        body.totalAmount = body.amount = baseAmt + addonAmt + taxAmt + priced.extraGuestAmount;
 
         const saved = await withPropertyLock(String(body.property), async () => {
             const result = await availability.isPropertyAvailable(body.property, from, to, {
